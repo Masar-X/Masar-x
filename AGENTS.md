@@ -36,6 +36,7 @@
 | [10-spec-first.md](./docs/agents/references/10-spec-first.md) | Spec-First standard, spec anatomy |
 | [11-git-standards.md](./docs/agents/references/11-git-standards.md) | Conventional Commits, PR rules, branch isolation & multi-agent safety (I14), git identity lock (I15), escalation lock (I16) |
 | [12-e2e-testing.md](./docs/agents/references/12-e2e-testing.md) | Playwright e2e run contract, env vars, seeded-cookie auth, agent guidance |
+| [13-automation-testing.md](./docs/agents/references/13-automation-testing.md) | Test-tier policy + browser-use/computer-use verdict, per-PR test gate, coverage matrix, gap roadmap |
 
 ---
 
