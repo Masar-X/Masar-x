@@ -73,6 +73,21 @@ describe('masarxDesktopApi with an ipcRenderer stub (preload context)', () => {
     expect(ipc.invoke).toHaveBeenCalledWith('updates:skip', '9.9.9');
   });
 
+  it('updates.check() forwards to its channel and resolves the result (spec 058)', async () => {
+    ipc.invoke.mockResolvedValueOnce({ status: 'up-to-date' });
+    await expect(masarxDesktopApi.updates.check()).resolves.toEqual({
+      status: 'up-to-date',
+    });
+    expect(ipc.invoke).toHaveBeenCalledWith('updates:check');
+  });
+
+  it('updates.check() falls back to disabled outside preload (spec 058)', async () => {
+    ipc.invoke.mockReturnValueOnce(undefined);
+    await expect(masarxDesktopApi.updates.check()).resolves.toEqual({
+      status: 'disabled',
+    });
+  });
+
   it('window.isMaximized() forwards to its channel and returns the boolean', async () => {
     ipc.invoke.mockResolvedValueOnce(true);
     await expect(masarxDesktopApi.window.isMaximized()).resolves.toBe(true);

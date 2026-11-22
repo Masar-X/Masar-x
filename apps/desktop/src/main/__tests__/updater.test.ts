@@ -305,6 +305,61 @@ describe('T023 — Updater contract', () => {
     expect(existsSync(flagPath)).toBe(false);
   });
 
+  // ========================================================================
+  // Spec 058 (desktop-pro checklist T4) — manual checkFor() statuses.
+  // electron-updater's checkForUpdates() resolves `UpdateCheckResult | null`
+  // where null means "updater inactive" (verified against the installed
+  // 6.8.11 typings) — NOT "no update". The Updater maps it to truthful
+  // statuses instead of the old always-null fire-and-forget.
+  // ========================================================================
+
+  it('checkFor maps an available update from checkForUpdates', async () => {
+    autoUpdaterMock.checkForUpdates.mockResolvedValueOnce({
+      isUpdateAvailable: true,
+      updateInfo: { version: '0.7.0', releaseDate: '2026-11-23' },
+    });
+    const updater = new Updater({ userDataPath: tmpDir });
+    await expect(updater.checkFor()).resolves.toEqual({
+      status: 'available',
+      version: '0.7.0',
+    });
+  });
+
+  it('checkFor maps an up-to-date result (isUpdateAvailable false)', async () => {
+    autoUpdaterMock.checkForUpdates.mockResolvedValueOnce({
+      isUpdateAvailable: false,
+      updateInfo: { version: '0.6.1' },
+    });
+    const updater = new Updater({ userDataPath: tmpDir });
+    await expect(updater.checkFor()).resolves.toEqual({ status: 'up-to-date' });
+  });
+
+  it('checkFor reports disabled when the updater resolves null (inactive)', async () => {
+    autoUpdaterMock.checkForUpdates.mockResolvedValueOnce(null);
+    const updater = new Updater({ userDataPath: tmpDir });
+    await expect(updater.checkFor()).resolves.toEqual({ status: 'disabled' });
+  });
+
+  it('checkFor maps a rejected checkForUpdates to the error status', async () => {
+    autoUpdaterMock.checkForUpdates.mockRejectedValueOnce(new Error('feed down'));
+    const updater = new Updater({ userDataPath: tmpDir });
+    await expect(updater.checkFor()).resolves.toEqual({ status: 'error' });
+  });
+
+  it('checkFor is rate-limited within the injected window', async () => {
+    // First call goes through (lastCheckAt starts at 0), second call within
+    // the window is rate-limited WITHOUT hitting checkForUpdates again.
+    autoUpdaterMock.checkForUpdates.mockResolvedValue({
+      isUpdateAvailable: false,
+      updateInfo: { version: '0.6.1' },
+    });
+    const updater = new Updater({ userDataPath: tmpDir, checkForRateLimitMs: 60_000 });
+
+    await expect(updater.checkFor()).resolves.toEqual({ status: 'up-to-date' });
+    await expect(updater.checkFor()).resolves.toEqual({ status: 'rate-limited' });
+    expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
   it('bypasses auto-updater checks when running in portable mode', async () => {
     process.env.PORTABLE_EXECUTABLE_DIR = 'C:\\test\\portable';
     try {
@@ -313,7 +368,7 @@ describe('T023 — Updater contract', () => {
       const manualRes = await updater.checkFor();
 
       expect(startupRes).toBeNull();
-      expect(manualRes).toBeNull();
+      expect(manualRes).toEqual({ status: 'disabled' });
       expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
     } finally {
       delete process.env.PORTABLE_EXECUTABLE_DIR;
@@ -331,7 +386,7 @@ describe('T023 — Updater contract', () => {
       const manualRes = await updater.checkFor();
 
       expect(startupRes).toBeNull();
-      expect(manualRes).toBeNull();
+      expect(manualRes).toEqual({ status: 'disabled' });
       expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
     } finally {
       (mockedApp as unknown as { isPackaged: boolean }).isPackaged = true;

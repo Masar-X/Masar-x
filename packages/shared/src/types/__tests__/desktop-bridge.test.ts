@@ -41,9 +41,9 @@ describe('MasarxDesktopBridge', () => {
     );
   });
 
-  it('updates namespace exposes installAndRestart, skip, onAvailable, onError', () => {
+  it('updates namespace exposes installAndRestart, skip, check, onAvailable, onError (spec 058)', () => {
     expect(Object.keys(masarxDesktopApi.updates).sort()).toEqual(
-      ['installAndRestart', 'onAvailable', 'onError', 'skip'],
+      ['check', 'installAndRestart', 'onAvailable', 'onError', 'skip'],
     );
   });
 

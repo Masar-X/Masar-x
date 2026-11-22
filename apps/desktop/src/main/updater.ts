@@ -52,6 +52,14 @@ export interface UpdateAvailableInfo {
   releaseDate?: string;
 }
 
+// Spec 058 — result of a manual check (desktop-pro checklist T4). Truthful
+// statuses; `version` is present only when status === 'available'. Mirrors
+// the shared DesktopUpdateCheckResult (packages/shared desktop-bridge.ts).
+export interface UpdateCheckResult {
+  status: 'disabled' | 'rate-limited' | 'up-to-date' | 'available' | 'error';
+  version?: string;
+}
+
 export type Unsubscribe = () => void;
 
 
@@ -199,25 +207,38 @@ export class Updater {
   }
 
   /**
-   * Manual check (e.g. from a menu item "Check for updates"). Rate-limited
-   * to one call per `rateLimitMs` window.
+   * Manual check (e.g. from a "Check for updates" button). Rate-limited
+   * to one call per `rateLimitMs` window. Unlike the startup check this
+   * AWAITS `checkForUpdates()` and maps its resolved UpdateCheckResult
+   * (electron-updater: `isUpdateAvailable` + `updateInfo.version`; a
+   * `null` resolve means the updater is inactive) into truthful statuses
+   * — spec 058. The `updates:available` broadcast still fires on top.
    */
-  async checkFor(): Promise<UpdateAvailableInfo | null> {
+  async checkFor(): Promise<UpdateCheckResult> {
     if (!isAutoUpdateEnabled()) {
-      return null;
+      return { status: 'disabled' };
     }
 
     const now = Date.now();
     if (now - this.lastCheckAt < this.rateLimitMs) {
-      return null;
+      return { status: 'rate-limited' };
     }
     try {
       this.lastCheckAt = now;
-      await this.au.checkForUpdates();
+      const result = await this.au.checkForUpdates();
+      if (!result) {
+        // electron-updater resolves null when the updater is inactive —
+        // report it honestly rather than pretending "up-to-date".
+        return { status: 'disabled' };
+      }
+      if (result.isUpdateAvailable) {
+        return { status: 'available', version: result.updateInfo.version };
+      }
+      return { status: 'up-to-date' };
     } catch (err: unknown) {
       desktopLog.warn('Manual update check failed:', err);
+      return { status: 'error' };
     }
-    return null;
   }
 
   /**
