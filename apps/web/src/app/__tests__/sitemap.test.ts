@@ -8,10 +8,17 @@ vi.mock('masarx-shared/supabase', () => ({
   createSupabaseClient: vi.fn(),
 }));
 
+// Issue #275: the catch path must LOG via logger.error, not swallow silently.
+vi.mock('@/lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
 import { createSupabaseClient } from 'masarx-shared/supabase';
+import { logger } from '@/lib/logger';
 import sitemap from '../sitemap';
 
 const createSupabaseClientMock = vi.mocked(createSupabaseClient);
+const loggerErrorMock = vi.mocked(logger.error);
 
 type Row = Record<string, unknown>;
 
@@ -50,6 +57,7 @@ const makeClient = (tables: Record<string, Row[] | null>) => {
 
 beforeEach(() => {
   createSupabaseClientMock.mockReset();
+  loggerErrorMock.mockClear();
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://sb.example.co');
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key-123');
 });
@@ -170,7 +178,7 @@ describe('full sitemap with dynamic rows', () => {
     expect(client.eqCalls).toEqual([['status', 'approved']]);
   });
 
-  it('degrades to static-only when the queries resolve with null data', async () => {
+  it('degrades to static-only when the queries resolve with null data (no spurious log)', async () => {
     const client = makeClient({}); // no table configured → data null
     createSupabaseClientMock.mockReturnValue(client as never);
 
@@ -178,9 +186,10 @@ describe('full sitemap with dynamic rows', () => {
 
     expect(entries).toHaveLength(7);
     expect(entries.every((e) => !e.url.includes('/courses/'))).toBe(true);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
-  it('degrades to static-only when a query throws (error containment)', async () => {
+  it('degrades to static-only when a query throws and logs the failure (error containment)', async () => {
     const throwingClient = {
       from: vi.fn(() => {
         throw new Error('connection refused');
@@ -192,5 +201,11 @@ describe('full sitemap with dynamic rows', () => {
 
     expect(entries).toHaveLength(7);
     expect(createSupabaseClientMock).toHaveBeenCalled();
+    // Issue #275: the failure must be observable, not swallowed.
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'Sitemap generation failed: dynamic entries dropped',
+      expect.any(Error),
+    );
   });
 });

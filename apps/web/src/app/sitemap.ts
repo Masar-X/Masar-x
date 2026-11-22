@@ -1,6 +1,7 @@
 import { createSupabaseClient, type SupabaseClient } from "masarx-shared/supabase";
 import { MetadataRoute } from "next";
 
+import { logger } from "@/lib/logger";
 import { SITE_URL } from "@/lib/site-url";
 
 // Spec 052: was hardcoded to masarx.vercel.app — each faculty deployment
@@ -97,8 +98,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         }))
       );
     }
-  } catch {
-    // console.error("Sitemap generation error:", error);
+  } catch (error) {
+    // Issue #275: log loudly, degrade gracefully — static entries still ship.
+    logger.error("Sitemap generation failed: dynamic entries dropped", error);
   }
 
   return [...staticEntries, ...dynamicEntries];
