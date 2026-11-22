@@ -8,6 +8,27 @@ import { queryCache, cacheKeys, cacheTTL } from "../lib/queryCache";
  * fallback logic if the Context fails or is missing. Writers go through the
  * admin_migrate_student_semesters RPC; this hook never writes.
  */
+
+/**
+ * Issue #276 — platform_settings.value is an untyped JSONB column (generated
+ * `Json` type); the documented shape for the `default_semester` key is the
+ * context's `PlatformSettingsValue { semester: number }`. Narrowing happens
+ * structurally (typeof + `in`, zero any-casts); non-finite/non-positive results
+ * clamp to 1 so cache/localStorage never persist NaN or 0. Move this — or a
+ * Zod schema — to packages/shared per I2 when a second consumer appears.
+ */
+export function readDefaultSemesterValue(value: unknown): number {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "semester" in value
+  ) {
+    const parsed = Number(value.semester ?? 1);
+    return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+  }
+  return 1;
+}
 export function usePlatformSettings() {
   const context = useOptionalPlatformSettingsContext();
 
@@ -45,10 +66,7 @@ export function usePlatformSettings() {
 
       if (error && error.code !== "PGRST116" && error.code !== "PGRST205") throw error;
 
-      let newSemester = 1;
-      if (data?.value && typeof data.value === 'object' && 'semester' in (data.value as any)) {
-        newSemester = Number((data.value as any).semester ?? 1);
-      }
+      const newSemester = readDefaultSemesterValue(data?.value);
 
       const updatedSettings = { default_semester: newSemester };
       setLocalSettings(updatedSettings);
