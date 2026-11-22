@@ -11,6 +11,11 @@
 --      winner's attempt (server-side idempotency; spec-030 RPC conventions).
 
 -- 1) Close duplicate active attempts (keep the oldest per (user_id, quiz_id)).
+-- The spec-030 grading guard (trg_guard_quiz_attempt_score) blocks
+-- grading-field UPDATEs unless the session opts in — the same transaction-
+-- scoped escape hatch finish_quiz_attempt uses (baseline set_config call).
+SELECT set_config('app.quiz_grading', 'on', true);
+
 UPDATE public.quiz_attempts qa
    SET finished_at = now()
   WHERE qa.finished_at IS NULL
