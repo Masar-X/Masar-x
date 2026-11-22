@@ -47,6 +47,11 @@ jobs:
       - name: Run ESLint
         run: pnpm --filter web lint
 
+      # Desktop lint gate (desktop-pro checklist T2 — correction C3: the
+      # script existed at apps/desktop/package.json but CI never invoked it).
+      - name: Run desktop ESLint
+        run: pnpm --filter desktop lint
+
   # ---------------------------------------------------------------------
   # next build check
   # Job name is set to "next build" so the resulting check name matches
