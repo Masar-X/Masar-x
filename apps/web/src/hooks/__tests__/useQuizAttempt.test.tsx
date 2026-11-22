@@ -7,7 +7,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 const { quizServiceMock, authState } = await vi.hoisted(async () => {
   return {
     quizServiceMock: {
-      startAttempt: vi.fn(),
+      // #278: mount is resume-only; the attempt row is created on the Start
+      // click through the atomic start_quiz_attempt RPC.
+      resumeActiveAttempt: vi.fn(),
+      startOrResumeAttempt: vi.fn(),
       saveAnswer: vi.fn(),
       finishAttempt: vi.fn(),
     },
@@ -29,8 +32,8 @@ const attemptKey = (uid: string) => `quiz_attempt_${QUIZ_ID}_${uid}`;
 
 const ATTEMPT = { id: "att-1", started_at: "2026-01-01T00:00:00Z" };
 
-function defaultStart(answers: unknown[] = []) {
-  quizServiceMock.startAttempt.mockResolvedValue({
+function defaultResume(answers: unknown[] = []) {
+  quizServiceMock.resumeActiveAttempt.mockResolvedValue({
     attempt: ATTEMPT,
     answers,
   });
@@ -55,14 +58,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   authState.loading = false;
-  defaultStart();
+  defaultResume();
+  quizServiceMock.startOrResumeAttempt.mockResolvedValue({
+    id: "att-1",
+    started_at: ATTEMPT.started_at,
+  });
   quizServiceMock.saveAnswer.mockResolvedValue(undefined);
   quizServiceMock.finishAttempt.mockResolvedValue({ score: 5, totalQuestions: 10 });
 });
 
-describe("initialization (resume-or-create)", () => {
+describe("initialization (resume-only, #278)", () => {
   it("resumes the existing attempt and hydrates DB answers", async () => {
-    defaultStart([
+    defaultResume([
       {
         question_id: "q1",
         selected_option: 2,
@@ -72,7 +79,7 @@ describe("initialization (resume-or-create)", () => {
     ]);
     const { result } = await renderLoaded();
 
-    expect(quizServiceMock.startAttempt).toHaveBeenCalledWith(QUIZ_ID, USER_ID);
+    expect(quizServiceMock.resumeActiveAttempt).toHaveBeenCalledWith(QUIZ_ID, USER_ID);
     expect(result.current.attemptId).toBe("att-1");
     expect(result.current.startTime).toBe(new Date(ATTEMPT.started_at).getTime());
     expect(result.current.answers["q1"]).toEqual({
@@ -84,7 +91,7 @@ describe("initialization (resume-or-create)", () => {
   });
 
   it("local answer wins when it is NEWER than the DB answer", async () => {
-    defaultStart([
+    defaultResume([
       {
         question_id: "q1",
         selected_option: 2,
@@ -113,7 +120,7 @@ describe("initialization (resume-or-create)", () => {
   });
 
   it("DB answer wins when the local answer is OLDER", async () => {
-    defaultStart([
+    defaultResume([
       {
         question_id: "q1",
         selected_option: 2,
@@ -141,7 +148,7 @@ describe("initialization (resume-or-create)", () => {
   });
 
   it("local answer fills in when the DB has no answer for that question", async () => {
-    defaultStart([]);
+    defaultResume([]);
     sessionStorage.setItem(
       attemptKey(USER_ID),
       JSON.stringify({
@@ -160,8 +167,8 @@ describe("initialization (resume-or-create)", () => {
     expect(sessionStorage.getItem(attemptKey(USER_ID))).toContain("q7");
   });
 
-  it("startAttempt failure is swallowed and loading settles false", async () => {
-    quizServiceMock.startAttempt.mockRejectedValue(new Error("network"));
+  it("resume failure is swallowed and loading settles false", async () => {
+    quizServiceMock.resumeActiveAttempt.mockRejectedValue(new Error("network"));
     const { result } = await renderLoaded();
 
     expect(result.current.attemptId).toBeNull();
@@ -171,15 +178,98 @@ describe("initialization (resume-or-create)", () => {
   it("skips init without a userId and does not call startAttempt", async () => {
     const { result } = await renderLoaded({ userId: undefined });
 
-    expect(quizServiceMock.startAttempt).not.toHaveBeenCalled();
+    expect(quizServiceMock.resumeActiveAttempt).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(false);
   });
 
   it("localOnly skips init entirely", async () => {
     const { result } = await renderLoaded({ localOnly: true });
 
-    expect(quizServiceMock.startAttempt).not.toHaveBeenCalled();
+    expect(quizServiceMock.resumeActiveAttempt).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(false);
+  });
+});
+
+describe("beginAttempt (#278 H26 — Start click)", () => {
+  it("adopts the RPC's attempt and records the server started_at", async () => {
+    quizServiceMock.resumeActiveAttempt.mockResolvedValue(null);
+    quizServiceMock.startOrResumeAttempt.mockResolvedValue({
+      id: "att-2",
+      started_at: "2026-11-22T11:00:00Z",
+    });
+
+    const { result } = await renderLoaded();
+
+    let attempt: { id: string } | null = null;
+    await act(async () => {
+      attempt = await result.current.beginAttempt();
+    });
+
+    expect(attempt).toMatchObject({ id: "att-2" });
+    expect(result.current.attemptId).toBe("att-2");
+    expect(result.current.startTime).toBe(
+      new Date("2026-11-22T11:00:00Z").getTime(),
+    );
+    expect(quizServiceMock.startOrResumeAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a concurrent second call while the first is in flight", async () => {
+    quizServiceMock.resumeActiveAttempt.mockResolvedValue(null);
+    let release!: (value: { id: string; started_at: string }) => void;
+    quizServiceMock.startOrResumeAttempt.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    const { result } = await renderLoaded();
+
+    let first!: Promise<{ id: string } | null>;
+    let second: { id: string } | null | undefined;
+    await act(async () => {
+      first = result.current.beginAttempt();
+      second = await result.current.beginAttempt();
+    });
+    expect(second).toBeNull();
+
+    release({ id: "att-3", started_at: "2026-11-22T12:00:00Z" });
+    await act(async () => {
+      await expect(first).resolves.toMatchObject({ id: "att-3" });
+    });
+    expect(quizServiceMock.startOrResumeAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays playable when the RPC fails (non-blocking error path)", async () => {
+    quizServiceMock.resumeActiveAttempt.mockResolvedValue(null);
+    quizServiceMock.startOrResumeAttempt.mockRejectedValue(
+      new Error("rpc down"),
+    );
+
+    const { result } = await renderLoaded();
+
+    let attempt: { id: string } | null = null;
+    await act(async () => {
+      attempt = await result.current.beginAttempt();
+    });
+
+    expect(attempt).toBeNull();
+    expect(result.current.error).toBe("rpc down");
+    expect(result.current.attemptId).toBeNull();
+  });
+
+  it("no-ops for guests and localOnly players", async () => {
+    const guest = await renderLoaded({ userId: undefined });
+    await act(async () => {
+      expect(await guest.result.current.beginAttempt()).toBeNull();
+    });
+    expect(quizServiceMock.startOrResumeAttempt).not.toHaveBeenCalled();
+
+    const local = await renderLoaded({ localOnly: true });
+    await act(async () => {
+      expect(await local.result.current.beginAttempt()).toBeNull();
+    });
+    expect(quizServiceMock.startOrResumeAttempt).not.toHaveBeenCalled();
   });
 });
 
@@ -239,7 +329,7 @@ describe("saveAnswer", () => {
   });
 
   it("skips the DB call without an attemptId but still writes sessionStorage", async () => {
-    quizServiceMock.startAttempt.mockRejectedValue(new Error("no attempt"));
+    quizServiceMock.resumeActiveAttempt.mockRejectedValue(new Error("no attempt"));
     const { result } = await renderLoaded();
 
     await act(async () => {
@@ -256,7 +346,7 @@ describe("saveAnswer", () => {
 
 describe("finishAttempt", () => {
   it("builds the history entry, dedupes by attemptId, patches with the SERVER score/total", async () => {
-    defaultStart([
+    defaultResume([
       {
         question_id: "q1",
         selected_option: 1,

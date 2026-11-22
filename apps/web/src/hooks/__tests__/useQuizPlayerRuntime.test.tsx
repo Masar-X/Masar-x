@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("startQuiz + countdown", () => {
-  it("seeds timeLeft from duration_seconds and ticks down every second", () => {
+  it("seeds timeLeft from duration_seconds and ticks down every second", async () => {
     const props = baseProps({
       quiz: { id: "quiz-1", title: "Quiz", duration_seconds: 10 },
     });
@@ -57,7 +57,10 @@ describe("startQuiz + countdown", () => {
     expect(result.current.timeLeftSeconds).toBeNull();
     expect(result.current.hasStarted).toBe(false);
 
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
 
     expect(result.current.hasStarted).toBe(true);
     expect(result.current.timeLeftSeconds).toBe(10);
@@ -78,7 +81,10 @@ describe("startQuiz + countdown", () => {
       quiz: { id: "quiz-1", title: "Quiz", duration_seconds: 5 },
     });
     const { result } = renderRuntime(props);
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
@@ -106,7 +112,10 @@ describe("startQuiz + countdown", () => {
       quiz: { id: "quiz-1", title: "Quiz", duration_seconds: 10 },
     });
     const { result, unmount } = renderRuntime(props);
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
 
     unmount();
     await act(async () => {
@@ -121,7 +130,10 @@ describe("startQuiz + countdown", () => {
       quiz: { id: "quiz-1", title: "Quiz" },
     });
     const { result } = renderRuntime(props);
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
 
     expect(result.current.timeLeftSeconds).toBeNull();
     await act(async () => {
@@ -355,7 +367,10 @@ describe("beforeunload guard", () => {
     expect(dispatchBeforeUnload()).toBe(false);
 
     // Started, questions present, results not shown: guard active.
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
     expect(dispatchBeforeUnload()).toBe(true);
 
     // After finishing: no guard.
@@ -369,7 +384,10 @@ describe("beforeunload guard", () => {
     const props = baseProps({ questions: [] });
     const { result } = renderRuntime(props);
 
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
     expect(dispatchBeforeUnload()).toBe(false);
   });
 });
@@ -379,7 +397,10 @@ describe("resetRuntime / formatTime", () => {
     const props = baseProps();
     const { result } = renderRuntime(props);
 
-    act(() => result.current.startQuiz());
+    await act(async () => {
+      result.current.startQuiz();
+      await Promise.resolve(); // #278: startQuiz is async (attempt RPC) — flush
+    });
     act(() => result.current.handleOptionSelect(1));
     act(() => result.current.handleSubmitAnswer());
     await act(async () => {
