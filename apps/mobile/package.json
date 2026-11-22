@@ -41,11 +41,11 @@
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^19.2.14",
-    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/coverage-v8": "5.1.1",
     "eslint": "^9.39.4",
     "sharp": "^0.35.4",
     "typescript": "^5.5.4",
-    "typescript-eslint": "^8.72.2",
-    "vitest": "^5.1.0"
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1"
   }
 }
