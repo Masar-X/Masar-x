@@ -54,19 +54,9 @@ const getProfile = cache(async (userId: string): Promise<ProfileRow> => {
 
     return (data as ProfileRow) ?? null;
   } catch (error) {
-    // Raw console.error to see the full error object (logger.summary strips details)
-    console.error("[layout] RAW ERROR:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    // `cause` is an ES2022 property on Error — guarded for older lib targets.
-    const cause = (() => {
-      if (!(error instanceof Error)) return "";
-      const errWithCause = error as Error & { cause?: unknown };
-      if (errWithCause.cause instanceof Error) {
-        return ` | cause: ${errWithCause.cause.message}`;
-      }
-      return "";
-    })();
-    logger.error(`[layout] Unexpected error fetching profile for ${userId}: ${message}${cause}`);
+    // #280: the error object itself goes through the logger — the summary
+    // includes the cause chain and the envelope keeps name/stack/cause/pg.
+    logger.error(`[layout] Unexpected error fetching profile for ${userId}`, error);
     return null;
   }
 });

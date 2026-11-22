@@ -37,6 +37,27 @@ const extractPgError = (cause: unknown): PgErrorLike | null => {
   return null;
 };
 
+// #280: walks an Error.cause chain (bounded, cycle-safe) collecting cause
+// messages — shared by summarizeError (flat pipe string) and
+// extractErrorFacts (Sentry envelope facts). Generic Error causes previously
+// reached neither; only PG-shaped causes were surfaced.
+const collectCauseMessages = (error: unknown, maxDepth = 5): string[] => {
+  const causes: string[] = [];
+  const seen = new Set<unknown>();
+  let current =
+    error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+  let depth = 0;
+  while (current && depth < maxDepth) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    if (!(current instanceof Error)) break;
+    causes.push(current.message);
+    current = (current as Error & { cause?: unknown }).cause;
+    depth += 1;
+  }
+  return causes;
+};
+
 const summarizeError = (label: string, error: unknown): string | null => {
   if (error instanceof Error) {
     const anyErr = error as Error & { cause?: unknown };
@@ -51,7 +72,14 @@ const summarizeError = (label: string, error: unknown): string | null => {
       if (pg.column) parts.push(`column=${pg.column}`);
       return parts.join(" | ");
     }
-    return `${label}: ${error.message}`;
+    // #280: generic Error cause chains surface in the flat summary too —
+    // the layout workaround hand-rolled exactly this one-level string.
+    const causes = collectCauseMessages(error);
+    if (causes.length === 0) return `${label}: ${error.message}`;
+    return [
+      `${label}: ${error.message}`,
+      ...causes.map((m) => `cause: ${m}`),
+    ].join(" | ");
   }
   return null;
 };
@@ -141,9 +169,27 @@ const newEventId = (): string => {
 
 const extractErrorFacts = (
   error: unknown,
-): { name?: string; message?: string; stack?: string } => {
+): {
+  name?: string;
+  message?: string;
+  stack?: string;
+  cause?: string[];
+  pg?: PgErrorLike;
+} => {
   if (error instanceof Error) {
-    return { name: error.name, message: error.message, stack: error.stack };
+    const anyErr = error as Error & { cause?: unknown };
+    // #280: the envelope now keeps the cause chain + PG facts — previously
+    // only {name, message, stack} survived, so structured context was
+    // dropped before it ever reached Sentry.
+    const causes = collectCauseMessages(error);
+    const pg = extractPgError(anyErr.cause);
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      ...(causes.length > 0 ? { cause: causes } : {}),
+      ...(pg ? { pg } : {}),
+    };
   }
   if (error && typeof error === "object") {
     const rec = error as Record<string, unknown>;
@@ -213,6 +259,8 @@ const sendToMonitoring = (
         logger_message: message,
         ...(facts.name ? { error_name: facts.name } : {}),
         ...(facts.stack ? { stack: facts.stack } : {}),
+        ...(facts.cause ? { error_cause: facts.cause } : {}),
+        ...(facts.pg ? { error_pg: facts.pg } : {}),
       },
     };
     if (facts.message || facts.name) {
