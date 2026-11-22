@@ -119,12 +119,12 @@ see `.github/workflows/ci.yml`.
   documented non-goal (`apps/mobile/vitest.config.ts`); device verification
   is the per-release EAS build + manual QA checklist.
 
-## 4. Coverage matrix (2026-11-22, `main` `5f33dad`)
+## 4. Coverage matrix (2026-11-22, refreshed post-spec-056 — `main` `f72bc04`)
 
 | Surface | Automated state | Gap | Phase |
 | --- | --- | --- | --- |
 | web vitest | 102 test files (node + jsdom projects) | none material | — |
-| web e2e | 17 specs / 35 tests: home, subjects catalog/levels/detail shell, schedules (ar+en), quiz-play guest + authed finish, materials, ai-assistant send + history, auth failure banners, TRW redeem + non-academic gate, admin anon gate, sidenav (incl. desktop stub), titlebar token, footer, opt-in prod smoke | lecture detail; quizzes list; quiz-attempts; add-file / add-video uploads; summaries detail + edit; courses list/detail; TRW catalog/category/course/my-access; downloads; news; faq; profile (settings, logout, semester switch); onboarding/academic; successful login/signup/reset + logout; admin authed render; unauthorized/privacy pages | P1 |
+| web e2e | 26 specs / 62 tests: home, subjects catalog/levels/detail shell, schedules (ar+en), quiz-play guest + authed finish, materials, ai-assistant send + history, auth failure banners, TRW redeem + non-academic gate + catalog/category/course/my-access, admin anon gate, sidenav (incl. desktop stub), titlebar token, footer, opt-in prod smoke, auth-success + reset-password + logout, quizzes list (guest/student/admin), lecture detail, news + faq, downloads + waitlist, onboarding/academic, protected-routes (middleware walls as contracts) — **spec 056 (P1) landed** | quiz-attempts; add-file / add-video uploads; summaries detail + edit; courses list/detail; profile (settings, semester switch); admin authed render — walled with route mocks (mock cookie rejected server-side); unauthorized/privacy pages | stub-server spec (walls) + residue |
 | desktop units | 7 files / 77 tests (main, preload, server, deepLink, logging, updater) | no e2e harness; smoke is CI-skipped by design; packaged-install verification is manual | P3 |
 | mobile | 16 lib test files; RN screens/hooks documented non-goal; no device e2e | device QA is manual per EAS release (accepted — revisit only if the owner lifts the non-goal) | — |
 | shared | 20 files; every runtime module covered; residue is type-only/generated | none | — |
@@ -142,7 +142,8 @@ always derived from `specs/` on disk.
 
 | Phase | Scope |
 | --- | --- |
-| P1 — web e2e gap-close | profile + logout, quizzes list + attempts, lecture detail, successful auth flows (login/signup/reset), admin authed render, TRW catalog + my-access, news/faq/downloads, onboarding. Reuse `helpers/auth.ts` + LIFO route mocks; no new tooling. |
+| P1 — web e2e gap-close — **LANDED as spec 056 (PR #292, squash `f72bc04`, 2026-11-22)**: 9 specs / 27 tests, suite 35→62, zero prod-code edits. Middleware-wall discovery re-scoped it: route-mocked authed renders of /profile, /quiz-attempts, /admin* are unreachable (mock cookie rejected server-side) → walls asserted as redirect contracts. |
+| P1-follow-up — local Supabase stub server | Point the e2e dev server's `NEXT_PUBLIC_SUPABASE_URL` at a local stub (auth/v1 + rest/v1 responses) for deterministic server-side behavior; unlocks the walled authed renders (profile, quiz-attempts, admin) + per-query error paths. Spec-first (I11) before implementation. |
 | P2 — backend wiring | SQL harness → CI (disposable PG 17 in Actions, replacing the documented-but-manual run); Deno handler tests for `reset-password`, `upload-avatar`, `delete-file`, `auth-hook-email`. |
 | P3 — desktop | packaged-install verification as a computer-use scripted checklist (wizard steps + icon/file-assoc evidence screenshots, spec 053 pattern); decide a CI-runnable smoke variant; expand desktop-shell e2e via the `DESKTOP_BRIDGE_STUB`. |
 | P4 — visual + a11y regression | Playwright screenshot baselines (light/dark × ar/en), axe-core pass on key pages, activate the Lighthouse baselines via repo variables. |
