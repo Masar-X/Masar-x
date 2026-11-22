@@ -8,6 +8,7 @@ import {
   parseDeepLinkUrl,
   DEEP_LINK_PROTOCOL,
 } from './deepLink.js';
+import { isValidUpdateVersion } from './validation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -434,9 +435,20 @@ export async function startMainProcess(): Promise<number> {
     },
   });
   ipcMain.handle('updates:installAndRestart', () => updater.installAndRestart());
-  ipcMain.handle('updates:skip', (_event, version: string) =>
-    updater.skipThisVersion(version),
-  );
+  // Desktop-pro checklist T3 — the renderer-supplied version used to pass
+  // straight through to electron-updater's skipUpdateCallback. Reject
+  // anything that is not a well-formed release version and log it.
+  ipcMain.handle('updates:skip', (_event, version: unknown) => {
+    if (!isValidUpdateVersion(version)) {
+      desktopLog.warn(
+        'updates:skip: invalid version ignored:',
+        typeof version,
+        String(version).slice(0, 80),
+      );
+      return;
+    }
+    updater.skipThisVersion(version);
+  });
 
   // Smoke-test hook: when launched with `electron . --masarx-smoke`, the
   // app prints the chosen port to stdout and stays alive long enough for
