@@ -87,8 +87,8 @@ test("authed quiz loop finishes with the server-graded score (7/10 → 70%)", as
   await page.route("**/rest/v1/quiz_questions?*", (route) =>
     route.fulfill({ json: MOCK_QUESTIONS }),
   );
-  // startAttempt: GET (existing-attempt probe, .maybeSingle() → null) then
-  // POST insert (.select().single() → object shape).
+  // Mount: read-only resume probe (.maybeSingle() → null — #278 never
+  // inserts from the mount path). POST is tolerated for safety.
   await page.route("**/rest/v1/quiz_attempts*", (route) => {
     if (route.request().method() === "POST") {
       return route.fulfill({ json: ATTEMPT_ROW });
@@ -102,6 +102,11 @@ test("authed quiz loop finishes with the server-graded score (7/10 → 70%)", as
   // Spec 030: the server re-grades and returns the trusted numbers.
   await page.route("**/rest/v1/rpc/finish_quiz_attempt", (route) =>
     route.fulfill({ json: { score: 7, total_questions: 10 } }),
+  );
+  // #278 H26: the Start click creates-or-returns the attempt via the atomic
+  // RPC (the client no longer POSTs quiz_attempts directly on click).
+  await page.route("**/rest/v1/rpc/start_quiz_attempt", (route) =>
+    route.fulfill({ json: ATTEMPT_ROW }),
   );
 
   await seedAuthedSession(page, { baseURL, userId: USER_ID });

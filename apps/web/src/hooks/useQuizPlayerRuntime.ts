@@ -295,6 +295,7 @@ export function useQuizPlayerRuntime(props: {
     setTimeTakenSeconds(null);
     setEndedByTimeout(false);
     endTimeMsRef.current = null;
+    startClockMsRef.current = null;
     finishingRef.current = false;
   }, []);
 
