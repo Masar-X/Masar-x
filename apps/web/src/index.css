@@ -59,13 +59,30 @@
   --color-brand-orange: rgb(var(--brand-orange));
   --color-brand-purple: #8b5cf6;
   --color-primary-foreground: hsl(var(--primary-foreground));
-  /* spec 046 follow-up 3: --border tokens exist (:root/.dark) but were never
-     wired into @theme, so `border-border` generated NO CSS and every site
-     (titlebar, workspace dividers, UpdateToast) fell back to the base-layer
-     #e5e7eb — a bright line on the dark shell. Only border wired here; the
-     rest of the shadcn token layer (bg-background/muted/accent, text-*,
-     ring-ring) is still dead (~98 sites) — separate follow-up spec. */
+  /* spec 046 follow-up 3: --border wired first (#231) — `border-border` had
+     generated NO CSS and painted the base-layer #e5e7eb on the dark shell.
+     Spec 057 (#282): the REST of the shadcn layer is wired. The :root/.dark
+     triplets existed all along; before this block every semantic class below
+     (bg-background, text-muted-foreground, ring-ring, bg-card, … — 179 live
+     occurrences audited) silently rendered transparent/inherit. */
   --color-border: hsl(var(--border));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
 
   /* font sizes (v3 fontSize overrides — exact pairs) */
   --text-xs: 0.75rem;
