@@ -206,6 +206,33 @@ const isPuterDebugEnabled = () => {
   }
 };
 
+// #279: transport noise = Puter SDK transport spam. The patterns below are
+// module scope: the console patch (initPuterDiagnostics) and the window
+// error/unhandledrejection listeners share them.
+const transportPatterns = [
+  /socket\.io/i,
+  /engine\.io/i,
+  /websocket/i,
+  /polling/i,
+  /transport/i,
+];
+
+/**
+ * #279 — Puter SDK transport-noise test. The message must match a transport
+ * pattern AND the stack must carry a Puter/socket.io script frame (the
+ * js.puter.com CDN or a bundled socket/engine.io frame); the stack getter is
+ * lazy so ordinary console traffic never pays the Error-construction cost.
+ * A non-Puter error merely mentioning "websocket"/"transport" therefore
+ * still prints — the old stack-anywhere keyword match ate those.
+ */
+export function isPuterTransportNoise(
+  message: string,
+  getStack: () => string,
+): boolean {
+  if (!transportPatterns.some((p) => p.test(message))) return false;
+  return /js\.puter\.com|socket\.io|engine\.io/i.test(getStack());
+}
+
 export const initPuterDiagnostics = () => {
   if (puterDiagnosticsInitialized) return;
   if (typeof window === 'undefined') return;
@@ -215,17 +242,13 @@ export const initPuterDiagnostics = () => {
     return;
   }
 
-  const errorPatterns = [/socket\.io/i, /engine\.io/i, /websocket/i, /polling/i, /transport/i];
-
   let errorSuppressUntil = 0;
   const originalConsoleError = console.error;
   const originalConsoleWarn = console.warn;
 
   console.error = function (...args: unknown[]) {
     const msg = String(args[0] || '').toLowerCase();
-    const stack = String(new Error().stack).toLowerCase();
-    
-    if (errorPatterns.some((p) => p.test(msg)) || errorPatterns.some((p) => p.test(stack))) {
+    if (isPuterTransportNoise(msg, () => String(new Error().stack))) {
       const now = Date.now();
       if (now >= errorSuppressUntil) {
         originalConsoleError.apply(console, args);
@@ -238,9 +261,7 @@ export const initPuterDiagnostics = () => {
 
   console.warn = function (...args: unknown[]) {
     const msg = String(args[0] || '').toLowerCase();
-    const stack = String(new Error().stack).toLowerCase();
-
-    if (errorPatterns.some((p) => p.test(msg)) || errorPatterns.some((p) => p.test(stack))) {
+    if (isPuterTransportNoise(msg, () => String(new Error().stack))) {
       const now = Date.now();
       if (now >= errorSuppressUntil) {
         originalConsoleWarn.apply(console, args);
@@ -255,7 +276,7 @@ export const initPuterDiagnostics = () => {
     'error',
     (event: ErrorEvent) => {
       const msg = String(event.message || '').toLowerCase();
-      if (errorPatterns.some((p) => p.test(msg))) {
+      if (transportPatterns.some((p) => p.test(msg))) {
         event.preventDefault();
       }
     },
@@ -266,7 +287,7 @@ export const initPuterDiagnostics = () => {
     'unhandledrejection',
     (event: PromiseRejectionEvent) => {
       const msg = String(event.reason || '').toLowerCase();
-      if (errorPatterns.some((p) => p.test(msg))) {
+      if (transportPatterns.some((p) => p.test(msg))) {
         event.preventDefault();
       }
     },
