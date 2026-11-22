@@ -46,8 +46,13 @@ export function resolveSupabaseRef(): string {
   return new URL(url).hostname.split(".")[0];
 }
 
-/** Fabricate a 30-day, client-truth-only Supabase session for `userId`. */
-export function buildSeededSession(userId: string) {
+/**
+ * Fabricate a 30-day, client-truth-only Supabase session for `userId`.
+ * `opts.role` (spec 056) injects `app_metadata.role` — the client-side
+ * `isAdmin` check reads it (AuthContext), so e2e can exercise admin-mode UI
+ * without touching production code. Omitted → plain student (unchanged).
+ */
+export function buildSeededSession(userId: string, opts?: { role?: string }) {
   const nowSec = Math.floor(Date.now() / 1000);
   const expiresIn = 60 * 60 * 24 * 30;
   const expiresAt = nowSec + expiresIn;
@@ -70,7 +75,11 @@ export function buildSeededSession(userId: string) {
       role: "authenticated",
       email: E2E_USER_EMAIL,
       phone: "",
-      app_metadata: { provider: "email", providers: ["email"] },
+      app_metadata: {
+        provider: "email",
+        providers: ["email"],
+        ...(opts?.role ? { role: opts.role } : {}),
+      },
       user_metadata: { full_name: "E2E User" },
       identities: [],
       created_at: "2026-01-01T00:00:00Z",
@@ -88,10 +97,10 @@ export function buildSeededSession(userId: string) {
  */
 export async function seedAuthedSession(
   page: Page,
-  options: { baseURL?: string; userId: string },
+  options: { baseURL?: string; userId: string; role?: string },
 ) {
   const storageKey = `sb-${resolveSupabaseRef()}-auth-token`;
-  const session = buildSeededSession(options.userId);
+  const session = buildSeededSession(options.userId, { role: options.role });
   await page.route("**/auth/v1/token?*", (route) => route.fulfill({ json: session }));
   await page.route("**/auth/v1/user", (route) => route.fulfill({ json: session.user }));
   await page.route("**/api/auth/sync", (route) => route.fulfill({ json: { ok: true } }));
