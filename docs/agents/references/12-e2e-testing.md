@@ -9,12 +9,14 @@
 > **When to read this file:** any task that runs, writes, or diagnoses
 > end-to-end browser tests — including agents running automation against the
 > app. The suite is self-contained: no credentials, no test database, no
-> app-side mock flag.
+> app-side mock flag. The tiered test policy, coverage matrix, and the
+> browser-use vs computer-use tool verdict live in
+> [13-automation-testing.md](./13-automation-testing.md).
 
 ## Surface map
 
 The ONLY automation-ready surface is the web Playwright suite: `apps/web/e2e/`
-(14 specs / ~26 tests), chromium-only, fully parallel. Config:
+(17 specs / 35 tests), chromium-only, fully parallel. Config:
 [`apps/web/playwright.config.ts`](../../../apps/web/playwright.config.ts).
 Desktop and mobile have **no** e2e harness (desktop's closest artifact is a
 CI-skipped Vitest smoke test that spawns Electron; mobile has unit tests

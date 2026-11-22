@@ -16,6 +16,8 @@ Start here when AGENTS.md points you at a task. Read only what the task needs.
 | Starting a non-trivial change (refactor, schema/API/auth, cross-cutting architecture, multi-component feature) | [10-spec-first.md](./10-spec-first.md) + existing example specs in `specs/` |
 | Running or writing Playwright e2e tests (or an agent automating the app) | [12-e2e-testing.md](./12-e2e-testing.md) |
 | Worktree e2e specs die with "NEXT_PUBLIC_SUPABASE_URL not found" | [12-e2e-testing.md](./12-e2e-testing.md) + [01-gotchas.md](./01-gotchas.md) §22 |
+| Planning / auditing automation tests (any surface: web, desktop, mobile, shared, edge, SQL) | [13-automation-testing.md](./13-automation-testing.md) |
+| Choosing the GUI tool for a verification task (browser-use vs computer-use) | [13-automation-testing.md](./13-automation-testing.md) §1 |
 | Committing, opening a PR, or checking pre-merge gates | [11-git-standards.md](./11-git-standards.md) + [08-precommit.md](./08-precommit.md) |
 | Need the full rule table (all 16 invariants) | [03-invariants.md](./03-invariants.md) |
 | Licensing questions (AGPL-3.0 code / content + brand carve-outs) | [../../../NOTICE.md](../../../NOTICE.md) |
