@@ -106,7 +106,6 @@ test.describe("reset-password", () => {
 
   test("a recovery link fires the load-time PKCE exchange with the URL code and renders the form", async ({
     page,
-    baseURL,
   }) => {
     await page.route("**/rest/v1/**", (route) => route.fulfill({ json: [] }));
     await page.route("**/rest/v1/platform_settings*", (route) =>
