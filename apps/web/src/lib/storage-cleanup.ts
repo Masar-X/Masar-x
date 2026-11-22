@@ -38,7 +38,9 @@ export function cleanupOldLocalStorage(): void {
       }
     });
   } catch (e) {
-    // Silently fail if localStorage is not available
+    // ACCEPTED (#284 triage): cosmetic one-time cleanup — localStorage being
+    // unavailable is a known browser state (private mode), the warning is
+    // the right level, and nothing actionable is lost. No telemetry.
     console.warn('Failed to cleanup old localStorage keys:', e);
   }
 }

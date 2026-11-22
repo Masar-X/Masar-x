@@ -1,5 +1,7 @@
 import "server-only";
 
+import { logger } from "@/lib/logger";
+
 /**
  * Lean product metrics on Upstash Redis (owner directive, 2026-10-21).
  *
@@ -70,12 +72,9 @@ const upstashPipeline = async (
 
 const runQuietly = (scope: string, task: Promise<unknown>): void => {
   task.catch((err: unknown) => {
-    console.error(
-      '[metrics]',
-      scope,
-      'failed (dropped):',
-      err instanceof Error ? err.message : err,
-    );
+    // #284: surfaced through the logger (Sentry envelope forwards) — a
+    // dropped metrics write is otherwise invisible prod data loss.
+    logger.error(`[metrics] ${scope} failed (dropped)`, err);
   });
 };
 
@@ -230,10 +229,9 @@ export async function getAdminMetrics(): Promise<MetricsSnapshot> {
       ...trendDays.map((d) => ['pfcount', `m:au:${d}`]),
     ]);
   } catch (err: unknown) {
-    console.error(
-      '[metrics] read failed:',
-      err instanceof Error ? err.message : err,
-    );
+    // #284: surfaced — EMPTY_SNAPSHOT would otherwise show admin dashboards
+    // silent zeros with no signal anywhere.
+    logger.error('[metrics] read failed', err);
     return EMPTY_SNAPSHOT;
   }
 

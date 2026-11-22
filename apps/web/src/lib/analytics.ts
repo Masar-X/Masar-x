@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logger } from '@/lib/logger';
 
 export interface SystemLog {
     level: 'info' | 'warn' | 'error' | 'fatal';
@@ -48,7 +49,7 @@ class AnalyticsService {
                 metadata: log.metadata,
             });
             if (error) {
-                console.error('[analytics] system_logs insert failed:', log.level, error.message);
+                logger.error('[analytics] system_logs insert failed', error, { level: log.level });
             }
         } catch {
             // ignore — system log writes must never throw into callers

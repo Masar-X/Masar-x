@@ -1,5 +1,7 @@
 "use client";
 
+import { logger } from "@/lib/logger";
+
 const SW_URL = "/sw.js";
 
 /**
@@ -22,7 +24,9 @@ export function registerServiceWorker(): void {
     navigator.serviceWorker
       .register(SW_URL, { scope: "/" })
       .catch((err: unknown) => {
-        console.warn("[sw] registration failed:", err);
+        // #284: surfaced — a broken SW registration quietly disables offline
+        // caching + push; the logger.warn envelope forwards it.
+        logger.warn("[sw] registration failed", { error: String(err) });
       });
   });
 }

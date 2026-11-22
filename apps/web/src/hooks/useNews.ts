@@ -85,7 +85,7 @@ export function useNews(options: UseNewsOptions = {}) {
     },
     onError: (error: unknown) => {
       const errorMessage = error instanceof Error ? error.message : t("addError");
-      logger.error(`Failed to add news: ${errorMessage}`, { error });
+      logger.error("Failed to add news", error);
       toast.error(errorMessage);
     },
   });
@@ -105,7 +105,7 @@ export function useNews(options: UseNewsOptions = {}) {
     },
     onError: (error: unknown) => {
       const errorMessage = error instanceof Error ? error.message : t("statusUpdateError");
-      logger.error(`Failed to toggle news status: ${errorMessage}`, { error });
+      logger.error("Failed to toggle news status", error);
       toast.error(errorMessage);
     },
   });
@@ -121,7 +121,7 @@ export function useNews(options: UseNewsOptions = {}) {
     },
     onError: (error: unknown) => {
       const errorMessage = error instanceof Error ? error.message : t("deleteError");
-      logger.error(`Failed to delete news: ${errorMessage}`, { error });
+      logger.error("Failed to delete news", error);
       toast.error(errorMessage);
     },
   });

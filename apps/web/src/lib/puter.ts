@@ -275,8 +275,14 @@ export const initPuterDiagnostics = () => {
   window.addEventListener(
     'error',
     (event: ErrorEvent) => {
+      // #284: same SDK-origin scoping as the console patch (#279) — a
+      // genuine app error merely mentioning "websocket"/"transport" must
+      // surface; only Puter-SDK-origin noise is suppressed. The error
+      // object's stack gives the origin signal; without one we fail loud.
       const msg = String(event.message || '').toLowerCase();
-      if (transportPatterns.some((p) => p.test(msg))) {
+      if (
+        isPuterTransportNoise(msg, () => String(event.error?.stack ?? ''))
+      ) {
         event.preventDefault();
       }
     },
@@ -287,7 +293,15 @@ export const initPuterDiagnostics = () => {
     'unhandledrejection',
     (event: PromiseRejectionEvent) => {
       const msg = String(event.reason || '').toLowerCase();
-      if (transportPatterns.some((p) => p.test(msg))) {
+      if (
+        isPuterTransportNoise(
+          msg,
+          () =>
+            String(
+              event.reason instanceof Error ? event.reason.stack : '',
+            ),
+        )
+      ) {
         event.preventDefault();
       }
     },
