@@ -707,4 +707,68 @@ describe('T017 — Electron main process contract', () => {
     await expect(handler?.({}, 'file:///c:/sensitive.txt')).rejects.toThrow();
     await expect(handler?.({}, 42)).rejects.toThrow();
   });
+
+  // Desktop-pro checklist T3 — `updates:skip` input validation: the
+  // renderer-supplied `version` used to pass straight through to
+  // electron-updater's skipUpdateCallback; reject anything that is not a
+  // well-formed release version, warn via electron-log, and never reach
+  // the updater. (These live inside this describe so the shared
+  // beforeEach clears registeredIpcChannels between startMainProcess()
+  // runs — the ipcMain mock throws on duplicate registration.)
+  it('forwards a well-formed version to the updater skip path', async () => {
+    const { autoUpdater } = await import('electron-updater');
+    const skipStub = (autoUpdater as any).skipUpdateCallback as ReturnType<typeof vi.fn>;
+    skipStub.mockClear();
+    const mod = await import('../index');
+    await (mod as any).startMainProcess();
+
+    const handler = lastRegistered('updates:skip');
+    await handler?.({}, '0.6.1');
+    expect(skipStub).toHaveBeenCalledTimes(1);
+    expect(skipStub).toHaveBeenCalledWith({ releaseName: '0.6.1' });
+  });
+
+  it('ignores junk input with a warn and never reaches the updater', async () => {
+    const { autoUpdater } = await import('electron-updater');
+    const skipStub = (autoUpdater as any).skipUpdateCallback as ReturnType<typeof vi.fn>;
+    skipStub.mockClear();
+    const { default: logStub } = await import('electron-log/main');
+    (logStub.warn as ReturnType<typeof vi.fn>).mockClear();
+    const mod = await import('../index');
+    await (mod as any).startMainProcess();
+
+    const handler = lastRegistered('updates:skip');
+    for (const junk of ['abc', '', '9'.repeat(65), 42, null]) {
+      await handler?.({}, junk);
+    }
+    expect(skipStub).not.toHaveBeenCalled();
+    expect(logStub.warn).toHaveBeenCalled();
+    expect(logStub.warn).toHaveBeenCalledWith(
+      'updates:skip: invalid version ignored:',
+      'number',
+      '42',
+    );
+  });
+});
+
+describe('desktop-pro T3 — isValidUpdateVersion', () => {
+  it('accepts well-formed release and prerelease versions', async () => {
+    const { isValidUpdateVersion } = await import('../validation');
+    expect(isValidUpdateVersion('0.6.1')).toBe(true);
+    expect(isValidUpdateVersion('0.7.0-test.1')).toBe(true);
+    expect(isValidUpdateVersion('10.20.30-alpha.1.2')).toBe(true);
+  });
+
+  it('rejects junk, oversized, and non-string input', async () => {
+    const { isValidUpdateVersion } = await import('../validation');
+    expect(isValidUpdateVersion('')).toBe(false);
+    expect(isValidUpdateVersion('abc')).toBe(false);
+    expect(isValidUpdateVersion('0.6')).toBe(false);
+    expect(isValidUpdateVersion('0.6.1-')).toBe(false);
+    expect(isValidUpdateVersion('9'.repeat(65))).toBe(false);
+    expect(isValidUpdateVersion(42)).toBe(false);
+    expect(isValidUpdateVersion(null)).toBe(false);
+    expect(isValidUpdateVersion(undefined)).toBe(false);
+    expect(isValidUpdateVersion({ release: '0.6.1' })).toBe(false);
+  });
 });
