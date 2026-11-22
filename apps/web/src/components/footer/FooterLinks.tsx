@@ -34,7 +34,7 @@ export function FooterLinks({
     { href: `${localePrefix}/schedules`, label: tNav("schedules"), icon: CalendarDays },
     { href: `${localePrefix}/quizzes`, label: tNav("quizzes"), icon: MessageSquare },
     { href: `${localePrefix}/faq`, label: tFooter("faq"), icon: HelpCircle },
-    { href: `${localePrefix}/privacy`, label: tFooter("privacyPolicy"), icon: Shield },
+    { href: `${localePrefix}/privacy-policy`, label: tFooter("privacyPolicy"), icon: Shield },
   ];
 
   return (

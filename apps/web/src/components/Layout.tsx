@@ -39,7 +39,6 @@ export function Layout({ children, repoStars }: LayoutProps) {
 
   const isLightRoute =
     pathWithoutLocale === "/" ||
-    pathWithoutLocale === "/privacy" ||
     pathWithoutLocale === "/privacy-policy" ||
     pathWithoutLocale === "/privacy-details" ||
     pathWithoutLocale === "/faq" ||

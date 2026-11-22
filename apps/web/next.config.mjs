@@ -173,6 +173,21 @@ const nextConfig = {
         destination: "/admin-dashboard",
         permanent: true,
       },
+      // Hotfix 2026-11-23: the footer "Privacy Policy" link pointed at /privacy,
+      // a route deleted in the privacy-policy rename — the RSC prefetch 404s in
+      // prod. Bookmarks / cached SW prefetches keep resolving via these
+      // permanent redirects (next.config redirects run before next-intl
+      // middleware, so the locale-prefixed source is required too).
+      {
+        source: "/privacy",
+        destination: "/privacy-policy",
+        permanent: true,
+      },
+      {
+        source: "/:locale/privacy",
+        destination: "/:locale/privacy-policy",
+        permanent: true,
+      },
     ];
   },
   async rewrites() {
