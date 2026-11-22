@@ -1,6 +1,6 @@
 # Spec 014 — Desktop launch readiness (Electron 44, `masarx://` OAuth, dead-dep removal)
 
-**Status:** DRAFT 2026-09-23 — awaiting owner approval (I11)
+**Status:** LANDED 2026-09-23 — executed on main after owner approval: Electron 44 bump, `masarx://` deep-link parsing + PKCE Google sign-in (`abf802b`, `cc61646`), NSIS protocol registration (`6818106`), owner-action register + CHANGELOG 0.5.9/0.6.0 (`ca8b1e5`); desktop shipped the 0.6.x line (status corrected 2026-11-22, issue #287 — owner-approved)
 **Input:** Owner directive "make desktop ready" (2026-09-23); `docs/MVP_REPORT.md` post-MVP queue (G5.1 Electron bump, G3.7 signing prep); desktop audit 2026-09-08 items R3/R4/R15; MVP assessment 2026-09-20 deferred ledger.
 **MVP-lock:** executes the owner-recorded post-MVP desktop milestone (deployment readiness + login, the two allowed categories; no cosmetic work).
 **Scope guard:** Windows-only pipeline stays Windows-only; signing/crash-reporting/mac targets stay documented owner actions (no code).
