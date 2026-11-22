@@ -77,6 +77,7 @@ export function QuizPlayer({
     saveAnswer,
     finishAttempt: saveFinishAttempt,
     startTime: attemptStartTime,
+    beginAttempt,
     isGuest,
     error: attemptError,
   } = useQuizAttempt({
@@ -128,6 +129,7 @@ export function QuizPlayer({
     saveFinishAttempt: finishAndCapture,
     trackEvent,
     onComplete,
+    onBeginAttempt: beginAttempt,
   });
 
   if (authLoading || quizLoading) {

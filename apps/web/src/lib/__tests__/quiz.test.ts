@@ -132,31 +132,35 @@ describe("QuizService.getQuiz", () => {
 });
 
 describe("QuizService.attempt lifecycle", () => {
-  it("resumes an unfinished attempt with its answers", async () => {
+  it("resumeActiveAttempt resumes an unfinished attempt with its answers", async () => {
     chain.respondWith({ data: { id: "att-1" }, error: null }, { table: "quiz_attempts" });
     chain.respondWith({ data: [{ attempt_id: "att-1" }], error: null }, { table: "quiz_answers" });
 
-    const { attempt, answers } = await new QuizService().startAttempt("quiz-1", "u1");
-    expect(attempt).toEqual({ id: "att-1" });
-    expect(answers).toEqual([{ attempt_id: "att-1" }]);
+    const resumed = await new QuizService().resumeActiveAttempt("quiz-1", "u1");
+    expect(resumed!.attempt).toEqual({ id: "att-1" });
+    expect(resumed!.answers).toEqual([{ attempt_id: "att-1" }]);
     // Resume check filters on finished_at IS NULL.
     const isCall = chain.calls.find((c) => c.table === "quiz_attempts" && c.method === "is");
     expect(isCall!.args).toEqual(["finished_at", null]);
   });
 
-  it("creates a new attempt when none is unfinished", async () => {
-    // Method-scoped responses: the resume probe (maybeSingle) sees no
-    // unfinished attempt; the insert chain (single) returns the new row.
+  it("resumeActiveAttempt returns null when nothing is unfinished (#278: mount never inserts)", async () => {
     chain.respondWith({ data: null, error: null }, { table: "quiz_attempts", method: "maybeSingle" });
-    chain.respondWith({ data: { id: "att-new", score: 0 }, error: null }, { table: "quiz_attempts", method: "single" });
-    const { attempt, answers } = await new QuizService().startAttempt("quiz-1", "u1");
+    const resumed = await new QuizService().resumeActiveAttempt("quiz-1", "u1");
+    expect(resumed).toBeNull();
+    // Row creation belongs to the Start click (RPC), never the resume path.
+    expect(chain.calls.some((c) => c.table === "quiz_attempts" && c.method === "insert")).toBe(false);
+  });
+
+  it("startOrResumeAttempt delegates row creation to the atomic RPC (#278 H26)", async () => {
+    chain.respondWith({ data: { id: "att-new", started_at: "2026-11-22T10:00:00Z" }, error: null });
+    const attempt = await new QuizService().startOrResumeAttempt("quiz-1", "u1");
     expect(attempt.id).toBe("att-new");
-    expect(answers).toEqual([]);
-    const insert = chain.calls.find((c) => c.table === "quiz_attempts" && c.method === "insert");
-    const payload = insert!.args[0] as Record<string, unknown>;
-    expect(payload.score).toBe(0);
-    expect(payload.user_id).toBe("u1");
-    expect(typeof payload.started_at).toBe("string");
+    const rpc = chain.calls.find((c) => c.method === "rpc");
+    expect(rpc!.table).toBe("rpc:start_quiz_attempt");
+    expect(rpc!.args[0]).toEqual({ p_quiz_id: "quiz-1" });
+    // No direct client insert — the RPC owns row creation.
+    expect(chain.calls.some((c) => c.table === "quiz_attempts" && c.method === "insert")).toBe(false);
   });
 
   it("upserts answers with the attempt_id+question_id conflict key", async () => {

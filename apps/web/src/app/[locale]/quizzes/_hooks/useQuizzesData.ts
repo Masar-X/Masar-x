@@ -179,7 +179,13 @@ export function useQuizzesData(props: {
       const questionsToInsert = formData.questions.map((q, index) => ({
         quiz_id: quiz.id,
         question: q.question,
-        options: q.options,
+        // Canonical stored form for true-false (#278 H14) — identical to the
+        // edit branch above. The form writes locale-dependent options
+        // (`t("form.trueOption")`), so without this normalization an en-locale
+        // question would store ["True","False"] and re-edit as multiple-choice
+        // (edit-load detection reads the literal stored pair). Stored content
+        // is data, not UI copy; players select by index.
+        options: q.type === "true-false" ? ["صح", "خطأ"] : q.options,
         correct_answer: q.correctAnswer,
         explanation: q.explanation,
         image_url: q.imageUrl,
@@ -190,7 +196,13 @@ export function useQuizzesData(props: {
         .from("quiz_questions")
         .insert(questionsToInsert);
 
-      if (questionsError) throw questionsError;
+      if (questionsError) {
+        // #278 H15: never strand an approved, question-less quiz (public
+        // SELECT shows approved rows to everyone) — best-effort rollback of
+        // the just-created quiz row, then surface the real error.
+        await supabase.from("quizzes").delete().eq("id", quiz.id);
+        throw questionsError;
+      }
 
       return { created: true };
     },

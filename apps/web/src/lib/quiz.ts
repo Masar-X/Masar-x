@@ -1,5 +1,21 @@
 import { supabase } from './supabase';
 
+// quiz_attempts row shape (generated schema); startOrResumeAttempt's RPC
+// returns jsonb and is cast to this.
+export type QuizAttemptRow = {
+    id: string;
+    quiz_id: string | null;
+    user_id: string | null;
+    score: number;
+    total_questions: number;
+    started_at: string | null;
+    finished_at: string | null;
+    time_taken_seconds: number | null;
+    answers: unknown;
+    created_at: string | null;
+    updated_at: string | null;
+};
+
 
 
 export interface QuizData {
@@ -204,50 +220,48 @@ export class QuizService {
         }
     }
 
-    // Start or resume a quiz attempt
-    async startAttempt(quizId: string, userId: string) {
-        try {
-            // Check for existing unfinished attempt (finished_at is null)
-            const { data: existingAttempt } = await supabase
-                .from('quiz_attempts')
-                .select('*')
-                .eq('quiz_id', quizId)
-                .eq('user_id', userId)
-                .is('finished_at', null)
-                .limit(1)
-                .maybeSingle();
+    // Resume path (mount): read-only fetch of the caller's active attempt +
+    // its answers. Never inserts — row creation is the Start click's job
+    // (#278: a mount-time insert anchored started_at to page load, leaking
+    // start-screen dwell into time_taken_seconds).
+    async resumeActiveAttempt(quizId: string, userId: string) {
+        const { data: existingAttempt } = await supabase
+            .from('quiz_attempts')
+            .select('*')
+            .eq('quiz_id', quizId)
+            .eq('user_id', userId)
+            .is('finished_at', null)
+            .limit(1)
+            .maybeSingle();
 
-            if (existingAttempt) {
-                // Fetch existing answers for this attempt
-                const { data: answers, error: answersError } = await supabase
-                    .from('quiz_answers')
-                    .select('*')
-                    .eq('attempt_id', existingAttempt.id);
+        if (!existingAttempt) return null;
 
-                if (answersError) throw answersError;
+        // Fetch existing answers for this attempt
+        const { data: answers, error: answersError } = await supabase
+            .from('quiz_answers')
+            .select('*')
+            .eq('attempt_id', existingAttempt.id);
 
-                return { attempt: existingAttempt, answers: answers || [] };
-            }
+        if (answersError) throw answersError;
 
-            // Create new attempt
-            const { data: newAttempt, error: createError } = await supabase
-                .from('quiz_attempts')
-                .insert({
-                    quiz_id: quizId,
-                    user_id: userId,
-                    score: 0,
-                    total_questions: 0,
-                    started_at: new Date().toISOString()
-                })
-                .select()
-                .single();
+        return { attempt: existingAttempt, answers: answers || [] };
+    }
 
-            if (createError) throw createError;
+    // Start path (Start click, #278 H26): the server-side start_quiz_attempt
+    // RPC is the single atomic entry point — it returns the caller's active
+    // attempt or inserts one, and a concurrent start losing the unique-index
+    // race adopts the winner's row (no check-then-insert window).
+    async startOrResumeAttempt(quizId: string, _userId: string) {
+        const { data, error } = await supabase.rpc('start_quiz_attempt', {
+            p_quiz_id: quizId,
+        });
 
-            return { attempt: newAttempt, answers: [] };
-        } catch (error) {
-            throw error;
-        }
+        if (error) throw error;
+
+        // jsonb return shaped as the quiz_attempts row; the caller reads
+        // id/started_at. Ownership comes from auth.uid() inside the RPC —
+        // _userId is kept only for call-site symmetry.
+        return data as QuizAttemptRow;
     }
 
     // Save a single answer

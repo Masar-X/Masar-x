@@ -7,6 +7,8 @@ import {
 } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { hasInvalidQuestionOptions } from "@/lib/quizFormValidation";
+
 import { QuizMetaFields } from "./quiz-form/QuizMetaFields";
 import { QuizQuestionsSection } from "./quiz-form/QuizQuestionsSection";
 import type {
@@ -118,7 +120,9 @@ export function QuizFormModal({
               !formData.department ||
               !formData.year ||
               !formData.subject.trim() ||
-              formData.questions.some((q) => !q.question.trim())
+              formData.questions.some((q) => !q.question.trim()) ||
+              // #278 H12/H13: no empty/duplicate options, valid correct index.
+              hasInvalidQuestionOptions(formData.questions)
             }
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >

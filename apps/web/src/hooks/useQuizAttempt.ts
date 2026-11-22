@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { quizService } from '../lib/quiz';
 import { useAuth } from '../contexts/AuthContext';
@@ -67,7 +67,12 @@ export function useQuizAttempt({ quizId, userId, totalQuestions, quizTitle, loca
         const initAttempt = async () => {
             try {
                 setLoading(true);
-                const { attempt, answers: existingAnswers } = await quizService.startAttempt(quizId, userId);
+                // Mount is resume-only (#278): never insert here — the
+                // attempt row is created on the Start click so started_at
+                // anchors to play time, not page load.
+                const resumed = await quizService.resumeActiveAttempt(quizId, userId);
+                if (!resumed) return;
+                const { attempt, answers: existingAnswers } = resumed;
 
                 setAttemptId(attempt.id);
                 setStartTime(new Date(attempt.started_at).getTime());
@@ -117,6 +122,34 @@ export function useQuizAttempt({ quizId, userId, totalQuestions, quizTitle, loca
 
         initAttempt();
     }, [quizId, userId, localOnly]);
+
+    // Start the attempt on the Start CLICK (#278 H26): the server-side
+    // start_quiz_attempt RPC inserts-or-returns atomically, so a double
+    // click or two tabs converge on one active attempt. startingRef blocks
+    // a second in-flight call while the first resolves (client-side UX
+    // guard on top of the server's idempotency).
+    const startingRef = useRef(false);
+    const beginAttempt = useCallback(async () => {
+        if (localOnly || !userId || !quizId) return null;
+        if (startingRef.current) return null;
+        startingRef.current = true;
+        try {
+            const attempt = await quizService.startOrResumeAttempt(quizId, userId);
+            setAttemptId(attempt.id);
+            if (attempt.started_at) {
+                setStartTime(new Date(attempt.started_at).getTime());
+            }
+            return attempt;
+        } catch (err) {
+            logger.error('Failed to start quiz attempt:', err);
+            // Non-blocking: the player continues locally (same contract as
+            // the mount-resume failure path above).
+            setError(err instanceof Error ? err.message : null);
+            return null;
+        } finally {
+            startingRef.current = false;
+        }
+    }, [localOnly, userId, quizId]);
 
     // Save answer
     const saveAnswer = useCallback(async (questionId: string, selectedOption: number, isCorrect: boolean) => {
@@ -241,6 +274,7 @@ export function useQuizAttempt({ quizId, userId, totalQuestions, quizTitle, loca
         saving,
         error,
         startTime,
+        beginAttempt,
         saveAnswer,
         finishAttempt,
         isGuest: !authLoading && !userId

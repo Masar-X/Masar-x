@@ -49,6 +49,10 @@ export function useQuizPlayerRuntime(props: {
   >;
   trackEvent: (event: string, payload?: Record<string, unknown>) => void;
   onComplete?: (score: number) => void;
+  // #278: called by startQuiz — creates-or-returns the attempt row
+  // server-side and returns its started_at (null/void when the player is
+  // running locally, e.g. guests or an RPC failure).
+  onBeginAttempt?: () => Promise<{ started_at: string | null } | null> | { started_at: string | null } | null;
 }) {
   const {
     quizId,
@@ -61,6 +65,7 @@ export function useQuizPlayerRuntime(props: {
     saveFinishAttempt,
     trackEvent,
     onComplete,
+    onBeginAttempt,
   } = props;
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -74,6 +79,9 @@ export function useQuizPlayerRuntime(props: {
   const [endedByTimeout, setEndedByTimeout] = useState(false);
 
   const endTimeMsRef = useRef<number | null>(null);
+  // #278 H25: click-time anchor used when no server attempt exists (guests
+  // or a failed RPC) so time_taken_seconds never silently becomes 0.
+  const startClockMsRef = useRef<number | null>(null);
   const finishingRef = useRef(false);
   // T038: Use ref for score to avoid recreating finishQuiz callback on every score change
   const scoreRef = useRef(score);
@@ -92,7 +100,10 @@ export function useQuizPlayerRuntime(props: {
       if (timeout) setEndedByTimeout(true);
 
       const finishedAtMs = Date.now();
-      const startedAtMs = attemptStartTime || finishedAtMs;
+      // Anchor order: server started_at (authed) → Start-click clock
+      // (guests/RPC failure, #278 H25) → finish time (degenerate).
+      const startedAtMs =
+        attemptStartTime || startClockMsRef.current || finishedAtMs;
       const takenSeconds = Math.max(
         0,
         Math.round((finishedAtMs - startedAtMs) / 1000),
@@ -139,21 +150,41 @@ export function useQuizPlayerRuntime(props: {
   }, []);
 
   const startQuiz = useCallback(() => {
-    const now = Date.now();
-    const durationSeconds =
-      typeof quiz?.duration_seconds === "number" ? quiz.duration_seconds : null;
+    void (async () => {
+      const now = Date.now();
+      const durationSeconds =
+        typeof quiz?.duration_seconds === "number" ? quiz.duration_seconds : null;
 
-    if (durationSeconds && durationSeconds > 0) {
-      endTimeMsRef.current = now + durationSeconds * 1000;
-      setTimeLeftSeconds(durationSeconds);
-    } else {
-      endTimeMsRef.current = null;
-      setTimeLeftSeconds(null);
-    }
+      // #278 H25/H26: the attempt row is created (server-side, atomically)
+      // on this click — not on mount — so started_at anchors to play time.
+      const attempt = await onBeginAttempt?.();
+      const attemptStartedAtMs =
+        attempt && typeof attempt.started_at === "string" && attempt.started_at
+          ? new Date(attempt.started_at).getTime()
+          : null;
+      if (attemptStartedAtMs === null) startClockMsRef.current = now;
 
-    setHasStarted(true);
-    trackEvent("quiz_started", { quiz_id: quizId, title: quiz?.title });
-  }, [quiz?.duration_seconds, quiz?.title, quizId, trackEvent]);
+      if (durationSeconds && durationSeconds > 0) {
+        // Resume semantics: a resumed attempt's clock runs from its server
+        // started_at, so an abandoned attempt cannot re-arm a full timer.
+        endTimeMsRef.current = attemptStartedAtMs
+          ? attemptStartedAtMs + durationSeconds * 1000
+          : now + durationSeconds * 1000;
+        setTimeLeftSeconds(
+          Math.max(
+            0,
+            Math.ceil(((endTimeMsRef.current ?? now) - now) / 1000),
+          ),
+        );
+      } else {
+        endTimeMsRef.current = null;
+        setTimeLeftSeconds(null);
+      }
+
+      setHasStarted(true);
+      trackEvent("quiz_started", { quiz_id: quizId, title: quiz?.title });
+    })();
+  }, [onBeginAttempt, quiz?.duration_seconds, quiz?.title, quizId, trackEvent]);
 
   useEffect(() => {
     if (!hasStarted || showResults) return;
