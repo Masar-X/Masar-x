@@ -53,10 +53,19 @@ describe("createSupabaseClient", () => {
       anonKey: ANON,
       appVersion: "9.9.9",
     });
-    expect(createBrowserClient).toHaveBeenCalledWith(URL, ANON);
+    expect(createBrowserClient).toHaveBeenCalledWith(URL, ANON, {
+      auth: { detectSessionInUrl: false },
+    });
     expect((client as { __clientInfo?: string }).__clientInfo).toBe(
       "platform=web; app_version=9.9.9",
     );
+  });
+
+  it("HARD GUARANTEE: web runtime disables detectSessionInUrl (the reset-password page owns the PKCE exchange — auto-exchange burns the one-time code at page load)", () => {
+    createSupabaseClient({ runtime: "web", url: URL, anonKey: ANON });
+    expect(createBrowserClient).toHaveBeenLastCalledWith(URL, ANON, {
+      auth: { detectSessionInUrl: false },
+    });
   });
 
   it("desktop/mobile runtime without a storage adapter is rejected", () => {

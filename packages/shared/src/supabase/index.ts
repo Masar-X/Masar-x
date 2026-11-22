@@ -87,7 +87,16 @@ export function createSupabaseClient(options: SupabaseClientOptions): SupabaseCl
   //   - US2 (T029, T032): Expo + expo-secure-store
   switch (options.runtime) {
     case "web": {
-      const client = createBrowserClient(options.url, options.anonKey);
+      // detectSessionInUrl: false — supabase-js would otherwise auto-exchange
+      // any ?code= in the URL at client construction (before hydration), which
+      // burns the one-time PKCE recovery code before the reset-password page's
+      // own submit-time exchange can run (users hit expiredLinkError). Every
+      // consumer here exchanges explicitly (auth callback route, reset-password
+      // submit, desktop deep-link bridge), so implicit URL detection is never
+      // wanted. Same contract as the desktop/mobile branches below.
+      const client = createBrowserClient(options.url, options.anonKey, {
+        auth: { detectSessionInUrl: false },
+      });
       return wrapClient(client, options.runtime, clientInfo);
     }
     case "desktop": {
