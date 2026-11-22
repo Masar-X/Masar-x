@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-07T06:57:47.663Z",
+  "generated": "2026-11-22T02:22:37.603Z",
   "source": {
     "name": "Materials- AI - Y2_S1",
     "folderId": "1bE-Kel2uE8MdUvSN-7N8uFW_s2U5I3NA",
@@ -27,6 +27,12 @@
               "fileId": "12noG87ELtopyDidVvpYdoZUuYtCaOWf9",
               "type": "pdf",
               "modified": "2026-10-16"
+            },
+            {
+              "name": "اسئلة الميد الخاصه بمادة ادارة اعمال.pdf",
+              "fileId": "1IeugUcKn70baeqPTx-a3vo5jgkZoocOY",
+              "type": "pdf",
+              "modified": null
             }
           ],
           "children": []
@@ -118,6 +124,12 @@
               "modified": null
             },
             {
+              "name": "Chapter 4_ Digital Transmission - Practice Sheet & Detailed Solutions.pdf",
+              "fileId": "10CyS8ivUTBgGtHXQemz3MLgekqgncaxz",
+              "type": "pdf",
+              "modified": null
+            },
+            {
               "name": "Chapter2_Solutions (1).pdf",
               "fileId": "1thBeMROvi42q5Wj3Rz4ZdFKUUWGOC2W_",
               "type": "pdf",
@@ -148,6 +160,36 @@
           "nameAr": "المحاضرات",
           "folderId": "1njt9H4p6TQKKgxD1YwLLTP48ish-YhPS",
           "files": [
+            {
+              "name": "Lecture 1.pdf",
+              "fileId": "1WisBJolKbJRr_Nka9VWWsVvavrc19egB",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Lecture 2.pdf",
+              "fileId": "1TerDe8Z7iko4i8ZjLWOPwp2PAxdzbVw-",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Lecture 3.pdf",
+              "fileId": "1gdurtYDWcD80kg2LjTsppA7X8fMyFuu5",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Lecture 4.pdf",
+              "fileId": "1Ee2seKa3Nl0rjxCkHxWDx98RbQQPjXtR",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Lecture 5.pdf",
+              "fileId": "1fP3uXV4f17F_B61O2efctCPFHt-0uA9v",
+              "type": "pdf",
+              "modified": null
+            },
             {
               "name": "Lectures - Discrete Structures.pdf",
               "fileId": "1tGnKDY14QtGUnI_sybVXiQI7IVwIBoNc",
@@ -210,6 +252,70 @@
                   "fileId": "14ZihGw7URL0g1NidarTtGsgH4TCUXO7R",
                   "type": "mp4",
                   "modified": "2026-10-28"
+                }
+              ],
+              "children": []
+            },
+            {
+              "name": "Section 6",
+              "nameAr": "Section 6",
+              "folderId": "1rF9nrs9qLkI7-Hv8rMMJtW-HlWM9_T0g",
+              "files": [
+                {
+                  "name": "Copy of Assignment_6.pdf",
+                  "fileId": "1l43RiFktyb6nPXu8tabrKWu-yVZgweqT",
+                  "type": "pdf",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of section 6.pdf",
+                  "fileId": "1vdLmF49S0jiQCOEV5P8hHpRVLTs2QxUn",
+                  "type": "pdf",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of section6.mp4",
+                  "fileId": "1pyz1QozvbrPoBRK2_2nmaKAUcslu9KVA",
+                  "type": "mp4",
+                  "modified": null
+                }
+              ],
+              "children": []
+            },
+            {
+              "name": "Section 7",
+              "nameAr": "Section 7",
+              "folderId": "1A9tQvF0poky6HuU7GthTZ7KYU8RcSZ36",
+              "files": [
+                {
+                  "name": "Copy of Assignment_7.pdf",
+                  "fileId": "1sHG0jV0tLqUVuLBq7Fo__LjIaObKqujX",
+                  "type": "pdf",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of section 7.mp4",
+                  "fileId": "19gNMfM2CRr1DqH74lnbDa1yhA9JO24ba",
+                  "type": "mp4",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of section 7.pdf",
+                  "fileId": "1xgxWq0ECmXhVRl6551c5PYBPpmJf9o1J",
+                  "type": "pdf",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of sheet7-part1.mp4",
+                  "fileId": "1boKBVmxLvq0VRgVFqyfV2E1B5cmgvzAu",
+                  "type": "mp4",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of sheet7-part2.mp4",
+                  "fileId": "1Ivx860-R7iyQ4sCV4IqexMeUwht6Wfgj",
+                  "type": "mp4",
+                  "modified": null
                 }
               ],
               "children": []
@@ -634,6 +740,80 @@
                         }
                       ],
                       "children": []
+                    },
+                    {
+                      "name": "Sheet_5",
+                      "nameAr": "Sheet_5",
+                      "folderId": "1B-niSe0nKN1BDkhlIDAWrHRapBR6QvPi",
+                      "files": [
+                        {
+                          "name": "Sheet_5_q1.java",
+                          "fileId": "1xYFu1W0COb5Hrg8fO9e6gxwVmB1J9esT",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q10.java",
+                          "fileId": "1NSge3Zk_q0nzf4FSJvK4lRV48R7IrP-L",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q11.java",
+                          "fileId": "1ypdKBJbMIo1ZSw2vnWdLlwqcEoLUtDlN",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q2.java",
+                          "fileId": "15bdU6llMk_FAf1BTv4-Q5n3rRriPKMGx",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q3.java",
+                          "fileId": "1vFnQMZMzgrWhSd5Q-gZoGo5-2dXQF-9o",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q4.java",
+                          "fileId": "11wuWnxLl92T3bZ2XlQbwnzmzSj4mHFTX",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q5.java",
+                          "fileId": "1f5igE_ukmGyCE6zrpb05mW0pvtbbUND3",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q6.java",
+                          "fileId": "1Qu0lXaeGDpl3gmFa9-j8ekk9D2n_zBwO",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q7.java",
+                          "fileId": "10-75LYL06P4x9r8sDOiCOq5ulgUh5WRW",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q8.java",
+                          "fileId": "1X0uJQMDR64VsRqWwXS8qauXQkklFB0Ie",
+                          "type": "java",
+                          "modified": null
+                        },
+                        {
+                          "name": "Sheet_5_q9.java",
+                          "fileId": "1Wog84_n9nGNARdDmbVtHId21B1miFs3v",
+                          "type": "java",
+                          "modified": null
+                        }
+                      ],
+                      "children": []
                     }
                   ]
                 }
@@ -703,6 +883,74 @@
       "folderId": "1k1RvuORAx4rkcUxN0j8jJ6bMiVIegYRi",
       "groups": [
         {
+          "name": "Course Videos",
+          "nameAr": "Course Videos",
+          "folderId": "1QfVK89m1nu07-mV2sD-xw3Pf_HIrmkL-",
+          "files": [
+            {
+              "name": "Ch(2) Random Variables finish.mp4",
+              "fileId": "1Onz29-2Ulav5XMpdig5ISVsPuo7fFZ_M",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "Ch(3) Binomial Distribution.mp4",
+              "fileId": "1r16gbXlUDOvfmcBPpGXkTZ4gVDIlR0BD",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "Ch(3) Gamma ,Beta,Exponential Distribution.mp4",
+              "fileId": "1hhF2jkpE-RZc-b6m4sr6AyqR07X1HwnS",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "Ch(3) Normal Distribution Part (1).mp4",
+              "fileId": "1ivxKUgl9bmFfQUzLUjvisJZu-p-ySbQk",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "Ch(3) Normal Distribution Part (2).mp4",
+              "fileId": "1XFYyUkaRsDf__US4ORLkoTXnE4ewozD7",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "Ch(3) Poisson Distribution.mp4",
+              "fileId": "1bXDxlio90ZqB8pw2BAfKtFmXIkXEMTZd",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "ch1 probability[1].pdf",
+              "fileId": "13SFI4MPLRW-1mqdLatsymJoVJqPcD9vH",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "ch2.pdf",
+              "fileId": "1cQN4jBZj2o6OcprfqZYldPAI2QP_ih01",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "ch3 Binomial and poison distribution[1].pdf",
+              "fileId": "1zYecQNfDnvyYmgR4475DAHIVhTE4rYZD",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "ch3 Normal distribution[1].pdf",
+              "fileId": "1UUycOX_ow431WsmtbiJSFNsNRtDqePxi",
+              "type": "pdf",
+              "modified": null
+            }
+          ],
+          "children": []
+        },
+        {
           "name": "Materials",
           "nameAr": "المواد",
           "folderId": "1k1RvuORAx4rkcUxN0j8jJ6bMiVIegYRi",
@@ -712,6 +960,12 @@
               "fileId": "1Ag12ajktzozECIb7ObQMA0nfwCqFSpXQ",
               "type": "pdf",
               "modified": "2026-10-03"
+            },
+            {
+              "name": "ملخص قوانين الاحتمالات - Chapter 1.pdf",
+              "fileId": "15hxIT-F_Ku9xIBQEqg_NIzT2zR3gLD3N",
+              "type": "pdf",
+              "modified": null
             }
           ],
           "children": []
@@ -728,6 +982,122 @@
       "folderId": "1o5DYDacW5f3rJnSp1NMzsOxp_DpJlFF8",
       "groups": [
         {
+          "name": "Exams",
+          "nameAr": "Exams",
+          "folderId": "181CcAm91bkIHiU7HROt21dZIzCcm-vqR",
+          "files": [
+            {
+              "name": ".pdf",
+              "fileId": "1IqPAQdcO8fahXInvMjW4nUsvujL4kk3h",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "2021.pdf",
+              "fileId": "1b6Sojs9QQ_KjmIVoa9dcCGd14JnhrZ1q",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "2022.pdf",
+              "fileId": "1pCBHVNcae2dNjCelR5T-1pB_h3znHXdg",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "2023.pdf",
+              "fileId": "1IYZm_LwI3SQIo9uOdeEErRStv62Z2lRM",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "example1.pdf",
+              "fileId": "1AbkaqwxUyTLmnD-kngeFbyy2HWjnRdnn",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid - Term 2023 - Important Question - Dr. Ibrahim.pdf",
+              "fileId": "1V8iN8yq-aIBJN26QXl3sy3JxHQZJJqdx",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid 2021.pdf",
+              "fileId": "1tl9NtsfU2hmrxA-3QrfLl6Ku4KQ9XixC",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid 2023-2.pdf",
+              "fileId": "19Hj2qYSWgzBDz18aQNUNl9XtwAkGotUH",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid 2024 National Answers.pdf",
+              "fileId": "1tiDPpZ_5hv4O_nhvKL6XKCuQOLb34z2z",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid2024 BIS.pdf",
+              "fileId": "1Ww-5jq2JKueqMPQ4IS4qWPlYNDaPptZB",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid2024 general .pdf",
+              "fileId": "1nv9ER0y9ognp55RxbgohxQDr6Dgkeaq9",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Mid2024 national .pdf",
+              "fileId": "1K9v1ax7L79LkaYGnM1cFP3LTi6xdbr-H",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "نسخة من PM-mide-term-2021-solution.docx",
+              "fileId": "1dy5wXdRHFmeJgUl_P6CmPUqcv16LvTZp",
+              "type": "docx",
+              "modified": null
+            },
+            {
+              "name": "نسخة من Q.docx",
+              "fileId": "1dp0tih2XNwc0nWRN1W3jhceVAY1mMjE6",
+              "type": "docx",
+              "modified": null
+            },
+            {
+              "name": "نسخة من إدارة المشروعات 9_00-11_00 17_1_2023 د_ ابراهيم العوضي (1).pdf",
+              "fileId": "1N9XMRs3SLt6JBHU7Q32iIlQADO1N4UkX",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "نسخة من إدارة المشروعات   11_30-1_30 13_1_2024 د_ ابراهيم العوضي.pdf",
+              "fileId": "1YDNpeNfQRCWyD2Pg-RVh6Frjz-v9yoQ_",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "نسخة من ادارة المشروعات              12_00-1_00 23_11_2023 د_ ابراهيم العوضي.pdf",
+              "fileId": "1R6PLkmqHpR_0cCcRhKrRpJW7Sy_f-otF",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "نسخة من ادارة مشروعات    12_30-1_30 28_11_2022 د ابراهيم العوضي.pdf",
+              "fileId": "1KiBJf2Dn0PM1iYFSQ9l4X4CWdVdPU3dI",
+              "type": "pdf",
+              "modified": null
+            }
+          ],
+          "children": []
+        },
+        {
           "name": "Lectures",
           "nameAr": "المحاضرات",
           "folderId": "1qVl5AL0ln4dSY6VVN6NI30xqsprKYjuq",
@@ -743,6 +1113,64 @@
               "fileId": "12HNlBCHS5ur6va23_ybN5JWcaObqAsSm",
               "type": "pdf",
               "modified": "2026-10-03"
+            },
+            {
+              "name": "Project Managment (1).pptx",
+              "fileId": "1Q4LasdA-CiuFZlY5TettfPQ_UdvKcF9X",
+              "type": "pptx",
+              "modified": null
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Sections",
+          "nameAr": "Sections",
+          "folderId": "1JmbyompB7rHDKceVAAiCGIx7s9tdaD81",
+          "files": [
+            {
+              "name": "Project Management-sec2.pdf",
+              "fileId": "1hX_nUe30XLJYDXWbPxcPeWsMPTWBX38V",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Project Management-sec3.pdf",
+              "fileId": "1rK6QycidG_Bb4nnNi0kFRFGpaWXTpYBp",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Project Management-sec4.pdf",
+              "fileId": "14XLdkZ6mLrPO88-6ZRAKp76vlHhuZM7g",
+              "type": "pdf",
+              "modified": null
+            },
+            {
+              "name": "Project Management-sec5.pdf",
+              "fileId": "16tRA7bMYQ3nKTdDSYsxJXzGeX0nvi_Dr",
+              "type": "pdf",
+              "modified": null
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Summary",
+          "nameAr": "Summary",
+          "folderId": "15OLuqbpM7pJdb5AkOLPAc8e_0h_09Y3_",
+          "files": [
+            {
+              "name": "Copy of Recording 2026-11-20 185521.mp4",
+              "fileId": "18IxAebfCOFU00ZeYo7biiQKrpbG9eNCo",
+              "type": "mp4",
+              "modified": null
+            },
+            {
+              "name": "دليل المراجعة الشامل لمادة إدارة المشروعات (محتوى الميدتيرم).pdf",
+              "fileId": "10LHy4htO64SNyRKrNtaheRs_BQQkGOo1",
+              "type": "pdf",
+              "modified": null
             }
           ],
           "children": []
@@ -959,6 +1387,26 @@
                 }
               ],
               "children": []
+            },
+            {
+              "name": "Section7",
+              "nameAr": "Section7",
+              "folderId": "116nLI0UxyNspBfuK4dKZrXzBCddOJzB8",
+              "files": [
+                {
+                  "name": "Copy of matlab_7.mp4",
+                  "fileId": "1by2o_yr2dLueEjWHKWIwOe1Uixk1sPIy",
+                  "type": "mp4",
+                  "modified": null
+                },
+                {
+                  "name": "Copy of MATLAB_7.pptx",
+                  "fileId": "1QVobR4kK-ef2W8cjl4MNppUJbAXNQcv8",
+                  "type": "pptx",
+                  "modified": null
+                }
+              ],
+              "children": []
             }
           ]
         }
@@ -1108,5 +1556,5 @@
       "groups": []
     }
   ],
-  "lastSyncRun": "2026-11-07T06:57:47.663Z"
+  "lastSyncRun": "2026-11-22T02:22:37.603Z"
 }
