@@ -2,7 +2,7 @@
 
 **Issue:** #242 (ZANE queue item 6, Lane C — tracking #244)
 **Type:** security hardening (spec-first)
-**Status:** DRAFT — awaiting owner approval
+**Status:** Landed — squash `798a5bd2`, PR #249, 2026-11-16 (source issue #242 closed LANDED; status corrected 2026-11-22, issue #287)
 
 ## 1. Context & problem statement
 

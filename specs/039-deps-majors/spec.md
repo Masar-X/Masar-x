@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Draft — awaiting owner approval** |
+| Status | **Closed — verdicts recorded and executed** (vitest 2.1.8→5.1.0 via #199 `5ea3059` superseding #159, electron-builder 26 via #158 `0bf784d`, #157 record-only + #160 closed; v0.6.0-test.1 prerelease published) — corrected 2026-11-22, issue #287 |
 | Type | Dependency/runtime upgrades (I11 trigger class: runtime/environment upgrade) |
 | Origin | Four dependabot MAJOR PRs parked since 2026-10-18 under the "majors need a dedicated spec, never auto-close" rule: #157 (react 19), #158 (electron-builder 26), #159 (vitest 5), #160 (@types/node 26). Triaged 2026-11-07 against live code + each PR's CI runs. |
 | Governs | #158, #159, #160 (re-scoped), #157 (record-only). Execution of each workstream happens in its own PR referencing this spec. |
