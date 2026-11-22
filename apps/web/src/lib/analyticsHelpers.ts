@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logger } from '@/lib/logger';
 import type { Json } from '@/types/database';
 
 export const analyticsHelpers = {
@@ -27,7 +28,7 @@ export const analyticsHelpers = {
             // reading the error, a failed write is indistinguishable from
             // no user activity (see the 2026-10-21 false-outage diagnosis).
             if (error) {
-                console.error('[analytics] recordAnalytics insert failed:', params.actionType, error.message);
+                logger.error('[analytics] recordAnalytics insert failed', error, { actionType: params.actionType });
             }
         } catch {
             // ignore — tracking must never break the auth flow that calls it

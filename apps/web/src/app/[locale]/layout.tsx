@@ -44,11 +44,10 @@ const getProfile = cache(async (userId: string): Promise<ProfileRow> => {
       .maybeSingle();
 
     if (error) {
-      logger.error(`[layout] Error fetching profile for ${userId}: ${error.message}`, {
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
+      // #284: standard shape — the PostgrestError object goes through the
+      // logger (normalizeError keeps code/details/hint structured; the
+      // envelope forwards it).
+      logger.error(`[layout] Error fetching profile for ${userId}`, error);
       return null;
     }
 

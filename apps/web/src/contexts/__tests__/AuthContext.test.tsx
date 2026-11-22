@@ -363,8 +363,14 @@ describe("profile sync (/api/auth/sync)", () => {
     renderAuth();
     await waitFor(() => expect(loggerError).toHaveBeenCalled());
 
+    // #284: the raw error object goes through as the 2nd arg (the cause
+    // chain reaches the envelope), not a pre-composed string.
     expect(loggerError).toHaveBeenCalledWith(
-      expect.stringContaining("HTTP 500: db down"),
+      "[auth] Profile sync failed for u-1",
+      expect.objectContaining({
+        message: expect.stringContaining("HTTP 500: db down"),
+        status: 500,
+      }),
     );
     expect(screen.getByTestId("loading")).toHaveTextContent("false");
   });

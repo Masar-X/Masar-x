@@ -87,7 +87,9 @@ const transport = new WebStandardStreamableHTTPServerTransport({
 });
 
 // Connect the server to the transport
-server.connect(transport).catch(console.error);
+server.connect(transport).catch((err: unknown) =>
+  logger.error("[api/mcp] transport connect failed", err),
+);
 
 export async function GET(request: Request) {
   if (!isAuthorized(request)) return unauthorizedResponse();

@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+
 /**
  * Sliding-window rate limiting with pluggable durable backends (spec T006/FR-004).
  *
@@ -80,14 +82,11 @@ const warnNoDurableStoreOnce = (): void => {
   if (warnedNoDurableStore) return;
   warnedNoDurableStore = true;
   if (process.env.NODE_ENV === 'production') {
-    console.warn(
-      JSON.stringify({
-        level: 'warn',
-        message: 'rate limiting: no durable store configured, using in-memory Map',
-        hint: 'Set UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN (or NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY) to enforce limits across instances',
-        timestamp: new Date().toISOString(),
-      }),
-    );
+    // #284: surfaced — limits silently unenforced across instances after a
+    // Redis/env regression must reach the Sentry envelope.
+    logger.warn('rate limiting: no durable store configured, using in-memory Map', {
+      hint: 'Set UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN (or NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY) to enforce limits across instances',
+    });
   }
 };
 
@@ -98,10 +97,9 @@ const logStoreError = (backend: string, scope: string, err: unknown): void => {
   const now = Date.now();
   if (now - (lastStoreErrorLogAt.get(scope) ?? 0) < 60_000) return;
   lastStoreErrorLogAt.set(scope, now);
-  console.error(
-    `[rate-limit] ${backend} store error (${scope}) - failing open:`,
-    err instanceof Error ? err.message : err,
-  );
+  // #284: surfaced — fail-open masking an unreachable store is the exact
+  // class of silent degradation this sweep targets. Throttle kept.
+  logger.error(`[rate-limit] ${backend} store error (${scope}) - failing open`, err);
 };
 
 // ---------------------------------------------------------------------------

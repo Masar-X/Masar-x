@@ -76,7 +76,7 @@ export async function GET(request: Request) {
   } catch (error: unknown) {
     const duration = Date.now() - start;
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[health/db] Connectivity check failed:", error);
+    logger.error("[health/db] Connectivity check failed", error);
 
     return NextResponse.json(
       {

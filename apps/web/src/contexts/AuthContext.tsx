@@ -112,12 +112,11 @@ export function AuthProvider({
       lastSyncTime.current = Date.now();
       logger.info(`[auth] Successfully synced profile for ${userId}`);
     } catch (err) {
-      // Extract a readable message so the root cause shows up in the console line itself,
-      // not buried inside a collapsed object in DevTools.
-      const message = err instanceof Error ? err.message : String(err);
-      const status = (err as { status?: number })?.status;
-      const suffix = status ? ` (status ${status})` : '';
-      logger.error(`[auth] Profile sync failed for ${userId}${suffix}: ${message}`);
+      // #284: standard shape — the raw error goes through the logger
+      // (normalizeError keeps the console line readable via the structured
+      // 2nd arg; the envelope gets name/stack/cause — status rides on the
+      // error object itself).
+      logger.error(`[auth] Profile sync failed for ${userId}`, err);
     } finally {
       syncInProgress.current = false;
     }
