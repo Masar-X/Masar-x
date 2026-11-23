@@ -749,6 +749,30 @@ describe('T017 — Electron main process contract', () => {
       '42',
     );
   });
+
+  // Spec 058 (desktop-pro T4) — manual check. With the app mock's
+  // isReady() returning true, startMainProcess fires the startup check
+  // immediately (fire-and-forget), stamping the Updater's rate-limit
+  // window — so a manual check through the handler right after boot is
+  // deterministically 'rate-limited'. Asserting an 'available' result
+  // through this full path would race the startup check for the queued
+  // mock value; the status MAPPING itself is unit-covered in
+  // updater.test.ts.
+  it('updates:check is rate-limited right after the startup check (spec 058)', async () => {
+    const { autoUpdater } = await import('electron-updater');
+    (autoUpdater as any).checkForUpdates.mockClear();
+    const mod = await import('../index');
+    await (mod as any).startMainProcess();
+    // Wait until the fire-and-forget startup check reached its
+    // checkForUpdates() call — it stamps lastCheckAt synchronously before
+    // awaiting, so the window is now guaranteed active.
+    await vi.waitFor(() => {
+      expect((autoUpdater as any).checkForUpdates).toHaveBeenCalled();
+    });
+
+    const handler = lastRegistered('updates:check');
+    await expect(handler?.({}, undefined)).resolves.toEqual({ status: 'rate-limited' });
+  });
 });
 
 describe('desktop-pro T3 — isValidUpdateVersion', () => {

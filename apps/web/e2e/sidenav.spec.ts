@@ -41,6 +41,7 @@ const DESKTOP_BRIDGE_STUB = `
       updates: {
         installAndRestart: asyncNoop,
         skip: asyncNoop,
+        check: async () => ({ status: "disabled" }),
         onAvailable: () => unsub,
         onError: () => unsub,
       },

@@ -4,5 +4,12 @@
   "install": "Install and restart",
   "later": "Later",
   "errorTitle": "Update check failed",
-  "dismiss": "Dismiss"
+  "dismiss": "Dismiss",
+  "checkForUpdates": "Check for updates",
+  "checking": "Checking…",
+  "upToDate": "You're up to date — no new version available.",
+  "versionAvailable": "New version {version} is available — see the update prompt.",
+  "rateLimited": "Checked recently — try again a bit later.",
+  "checksDisabled": "Update checks are disabled in this build.",
+  "checkFailed": "Couldn't check for updates right now."
 }
