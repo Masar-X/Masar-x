@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { masarxDesktopApi, type DesktopUpdateAvailableInfo } from '@masarx-shared/types/desktop-bridge';
+import {
+  masarxDesktopApi,
+  type DesktopUpdateAvailableInfo,
+  type DesktopUpdateCheckResult,
+} from '@masarx-shared/types/desktop-bridge';
 
 // ============================================================================
 // preload.ts — runs in an isolated world with Node access, but the renderer's
@@ -60,6 +64,9 @@ const api = {
       ipcRenderer.invoke('updates:installAndRestart'),
     skip: (version: string): Promise<void> =>
       ipcRenderer.invoke('updates:skip', version),
+    // Spec 058 — manual "Check for updates" (rate-limited in the Updater).
+    check: (): Promise<DesktopUpdateCheckResult> =>
+      ipcRenderer.invoke('updates:check'),
     onAvailable: (cb: (info: DesktopUpdateAvailableInfo) => void): Unsubscribe =>
       subscribe<DesktopUpdateAvailableInfo>('updates:available', cb),
     // B4 (audit 2026-09-12) — main broadcasts `updates:error` (see

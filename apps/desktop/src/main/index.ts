@@ -450,6 +450,11 @@ export async function startMainProcess(): Promise<number> {
     updater.skipThisVersion(version);
   });
 
+  // Spec 058 (desktop-pro checklist T4) — manual check. The Updater maps
+  // the awaited electron-updater result to truthful statuses; an
+  // `updates:available` broadcast still fires on top when one is found.
+  ipcMain.handle('updates:check', () => updater.checkFor());
+
   // Smoke-test hook: when launched with `electron . --masarx-smoke`, the
   // app prints the chosen port to stdout and stays alive long enough for
   // the smoke test to probe it. See __tests__/smoke.test.ts (T018).

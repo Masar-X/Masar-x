@@ -22,7 +22,7 @@
  * IPC channels (must stay byte-identical to apps/desktop/src/main/*.ts handlers):
  *   app:version, app:openExternal
  *   auth:rendererReady, auth:deepLink
- *   updates:installAndRestart, updates:skip, updates:available, updates:error
+ *   updates:installAndRestart, updates:skip, updates:check, updates:available, updates:error
  *   window:minimize, window:toggleMaximize, window:close, window:isMaximized, window:maximizeStateChanged
  */
 
@@ -38,6 +38,21 @@ interface DesktopUpdateErrorInfo {
   message: string;
 }
 
+// Spec 058 — result of a manual "Check for updates" via `updates:check`.
+// Statuses are truthful: `rate-limited` is a real state (1 h window), and
+// `checking` is deliberately NOT a result — it's the UI's in-flight state.
+export type DesktopUpdateCheckStatus =
+  | 'disabled'
+  | 'rate-limited'
+  | 'up-to-date'
+  | 'available'
+  | 'error';
+export interface DesktopUpdateCheckResult {
+  status: DesktopUpdateCheckStatus;
+  /** Present when status === 'available'. */
+  version?: string;
+}
+
 // --- Namespace signatures (REQUIRED on the wire, OPTIONAL in the renderer view) ---
 interface DesktopAppBridge {
   version: () => Promise<string>;
@@ -50,6 +65,7 @@ interface DesktopAuthBridge {
 interface DesktopUpdatesBridge {
   installAndRestart: () => Promise<void>;
   skip: (version: string) => Promise<void>;
+  check: () => Promise<DesktopUpdateCheckResult>;
   onAvailable: (cb: (info: DesktopUpdateAvailableInfo) => void) => DesktopBridgeUnsubscribe;
   onError: (cb: (info: DesktopUpdateErrorInfo) => void) => DesktopBridgeUnsubscribe;
 }
@@ -110,6 +126,14 @@ export const masarxDesktopApi = {
     skip: (_version: string): Promise<void> =>
       (globalThis as { ipcRenderer?: { invoke: (c: string, ...args: unknown[]) => Promise<void> } })
         .ipcRenderer?.invoke('updates:skip', _version) ?? Promise.resolve(),
+    check: (): Promise<DesktopUpdateCheckResult> =>
+      (globalThis as {
+        ipcRenderer?: { invoke: (c: string) => Promise<DesktopUpdateCheckResult> };
+      })
+        .ipcRenderer?.invoke('updates:check') ??
+      // Not in preload (browser/test context): report honestly instead of
+      // throwing — the renderer gates this surface on the bridge anyway.
+      Promise.resolve({ status: 'disabled' }),
     onAvailable: (_cb: (info: DesktopUpdateAvailableInfo) => void): DesktopBridgeUnsubscribe => () => {},
     onError: (_cb: (info: DesktopUpdateErrorInfo) => void): DesktopBridgeUnsubscribe => () => {},
   },

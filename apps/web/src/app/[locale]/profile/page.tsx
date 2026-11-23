@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationSettings } from "@/components/NotificationManager";
 import { AdminProfileImage } from "@/components/AdminProfileImage";
+import { UpdateCheck } from "@/components/desktop/UpdateCheck";
 import { useUserAcademic } from "@/hooks/useUserAcademic";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -791,6 +792,10 @@ export default function ProfilePage() {
               </div>
             </div>
           </section>
+
+          {/* Spec 058 — manual update check (desktop shell only; renders
+              null in the browser). */}
+          <UpdateCheck />
 
           {/* Footer Actions */}
           <div className="pt-10 flex flex-col sm:flex-row gap-4 border-t border-slate-100 dark:border-white/5">
