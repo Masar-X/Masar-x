@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { buildSeededSession } from "./helpers/auth";
 
 /**
- * Reset-password flow — spec 056.
+ * Reset-password flow — spec 056, exchange-race fix (2026-11-23).
  *
  * Page contract (reset-password/page.tsx, no data-testids — id/text
  * selectors): `?code&type=recovery` gates the form; a visit WITHOUT them
@@ -11,27 +11,29 @@ import { buildSeededSession } from "./helpers/auth";
  * after a 3s timer; the submit handler runs exchangeCodeForSession →
  * updateUser (PUT /auth/v1/user) → signOut → successMessage → login.
  *
- * ⚠️ Web-client reality (probed empirically, spec 056 §4): the browser
- * client runs `detectSessionInUrl: true` (createBrowserClient default), so
- * supabase-js AUTO-EXCHANGES the URL code at page load — POST
- * /auth/v1/token?grant_type=pkce fires before any submit and consumes the
- * single-use code + PKCE verifier. The load-time exchange is therefore the
- * deterministic, user-relevant contract asserted here (test 2). The page's
- * own submit-time exchange cannot succeed afterwards on the web client —
- * flagged to the owner as a product-behavior observation (the desktop
- * client sets detectSessionInUrl: false and does not share it).
+ * ✅ Web-client contract (fixed): the shared factory now constructs the
+ * browser client with `detectSessionInUrl: false` (packages/shared supabase
+ * factory) — supabase-js no longer auto-exchanges the URL code at page
+ * load, which used to burn the single-use PKCE code + verifier BEFORE the
+ * user could submit (real users hit expiredLinkError after typing a new
+ * password). The page's own submit-time exchange is the sole consumer of
+ * the code. Test 2 pins the full happy path: no load-time exchange → code
+ * intact in the URL → submit exchange succeeds → updateUser → signOut →
+ * success → login redirect. Mirrors the desktop/mobile branches, which
+ * already set the flag false.
  *
  * Test 3 pins the user-visible contract for an unexchangeable code: the
  * page surfaces resetPassword.expiredLinkError and stays on the form. In
- * the test no PKCE verifier exists, so the exchange fails locally
- * (AuthPKCECodeVerifierMissingError, zero network) and auth-js returns it
- * as the exchange error — the same page branch a real invalid/expired
- * grant takes. The assertion pins the banner, not the transport error.
+ * the test no PKCE verifier exists, so the submit-time exchange fails
+ * locally (AuthPKCECodeVerifierMissingError, zero network) and auth-js
+ * returns it as the exchange error — the same page branch a real
+ * invalid/expired grant takes. The assertion pins the banner, not the
+ * transport error.
  *
  * Mocked: anon auth pair (GET /auth/v1/user), catch-all rest/v1,
- * platform_settings (single object), filled profiles (the authed client
- * session from a successful load-time exchange would otherwise trip the
- * AcademicOnboardingGate → onboarding redirect), token?* → session or 400.
+ * platform_settings (single object), filled profiles (the post-exchange
+ * SIGNED_IN hydration would otherwise trip the AcademicOnboardingGate →
+ * onboarding redirect), token?* → session or 400, PUT user / POST logout.
  *
  * Local dev servers compile these routes cold under parallel workers — the
  * 120s timeout mirrors quiz-finish.spec.ts (CI serves a prebuilt build).
@@ -42,11 +44,28 @@ test.setTimeout(120_000);
 const ERROR_BOUNDARY = /Application error|Something went wrong|حدث شيء ما|عذراً/;
 const INVALID_LINK = "رابط إعادة التعيين غير صالح. يرجى طلب رابط جديد.";
 const EXPIRED_LINK = "رابط إعادة التعيين منتهي الصلاحية أو غير صالح";
+const SUCCESS = "تم تحديث كلمة المرور بنجاح";
 const TITLE = "إعادة تعيين كلمة المرور";
 const SUBMIT_AR = "تحديث كلمة المرور";
 const NEW_PASSWORD = "N3wPassword!";
 const USER_ID = "00000000-0000-4000-8000-00000000e2e5";
 const DEPARTMENT_ID = "00000000-0000-4000-8000-00000000d3p7";
+
+/** PKCE exchange counter — the load-time no-exchange assertion's probe. */
+function countPkceExchanges(page: import("@playwright/test").Page): {
+  count: () => number;
+} {
+  let pkceExchanges = 0;
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/auth/v1/token") &&
+      request.url().includes("grant_type=pkce")
+    ) {
+      pkceExchanges++;
+    }
+  });
+  return { count: () => pkceExchanges };
+}
 
 /**
  * Hydration gate (see auth-success.spec.ts): the platform_settings fetch
@@ -104,15 +123,15 @@ test.describe("reset-password", () => {
     await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
   });
 
-  test("a recovery link fires the load-time PKCE exchange with the URL code and renders the form", async ({
+  test("the URL code stays unexchanged at load and the submit exchange resets the password", async ({
     page,
   }) => {
     await page.route("**/rest/v1/**", (route) => route.fulfill({ json: [] }));
     await page.route("**/rest/v1/platform_settings*", (route) =>
       route.fulfill({ json: { key: "default_semester", value: "1" } }),
     );
-    // The load-time exchange SUCCEEDS → the client session cookie is set →
-    // AuthContext hydrates authed → keep the AcademicOnboardingGate satisfied.
+    // The submit-time exchange SUCCEEDS → SIGNED_IN fires → AuthContext
+    // hydrates authed → keep the AcademicOnboardingGate satisfied.
     const session = buildSeededSession(USER_ID);
     await page.route("**/rest/v1/profiles*", (route) =>
       route.fulfill({
@@ -132,32 +151,49 @@ test.describe("reset-password", () => {
     await page.route("**/auth/v1/token*", (route) =>
       route.fulfill({ json: session }),
     );
+    await page.route("**/auth/v1/logout", (route) => route.fulfill({ json: {} }));
     await recoverToSeedVerifier(page);
 
-    const pkceExchange = page.waitForRequest(
-      (request) =>
-        request.url().includes("/auth/v1/token") &&
-        request.url().includes("grant_type=pkce"),
-    );
+    const pkce = countPkceExchanges(page);
 
     await page.goto("/ar/reset-password?code=e2e-code&type=recovery", {
       waitUntil: "domcontentloaded",
     });
     // No hydration gate here: platform_settings is localStorage-cached by
     // the login-page load in this same context (queryCache falls back to
-    // localStorage), so it never re-fires on this navigation — and this
-    // test performs no fill/click interactions. The pkce wait below is the
-    // load signal; visibility asserts auto-wait through hydration.
-
-    // detectSessionInUrl: the client exchanges the URL code at load.
-    const exchange = await pkceExchange;
-    expect(exchange.postDataJSON()).toMatchObject({ auth_code: "e2e-code" });
-
+    // localStorage), so it never re-fires on this navigation. The heading
+    // below is the load signal.
     await expect(
       page.getByRole("heading", { level: 1, name: TITLE }),
     ).toBeVisible({ timeout: 20_000 });
     await expect(page.locator("#new-password")).toBeVisible();
     await expect(page.getByText(EXPIRED_LINK)).toHaveCount(0);
+
+    // detectSessionInUrl is OFF: no load-time exchange may have fired (the
+    // auto-exchange, were the flag still on, fires at client construction —
+    // before this assert — and would be counted here).
+    expect(pkce.count()).toBe(0);
+    expect(page.url()).toContain("code=e2e-code");
+
+    await page.locator("#new-password").fill(NEW_PASSWORD);
+    await page.locator("#confirm-new-password").fill(NEW_PASSWORD);
+    expect(pkce.count()).toBe(0);
+
+    // Register the wait BEFORE the submitting click — the exchange can
+    // complete inside the click's own await window otherwise.
+    const submitExchange = page.waitForRequest(
+      (request) =>
+        request.url().includes("/auth/v1/token") &&
+        request.url().includes("grant_type=pkce"),
+    );
+    await page.getByRole("button", { name: SUBMIT_AR }).click();
+
+    const exchange = await submitExchange;
+    expect(exchange.postDataJSON()).toMatchObject({ auth_code: "e2e-code" });
+
+    await expect(page.getByText(SUCCESS)).toBeVisible({ timeout: 20_000 });
+    // The page's 3s redirect timer hands the user back to login.
+    await page.waitForURL(/\/ar\/login$/, { timeout: 30_000 });
     await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
   });
 
@@ -175,8 +211,9 @@ test.describe("reset-password", () => {
       route.fulfill({ status: 400, json: { error: "invalid_grant" } }),
     );
     // No PKCE verifier exists in this test — see the header note: the
-    // exchange fails locally and the page surfaces the same expiredLinkError
-    // branch a real invalid grant takes.
+    // SUBMIT-time exchange fails locally and the page surfaces the same
+    // expiredLinkError branch a real invalid grant takes.
+    const pkce = countPkceExchanges(page);
     await page.goto("/ar/reset-password?code=e2e-code&type=recovery", {
       waitUntil: "domcontentloaded",
     });
@@ -184,6 +221,7 @@ test.describe("reset-password", () => {
     await expect(page.locator("#new-password")).toBeVisible({
       timeout: 20_000,
     });
+    expect(pkce.count()).toBe(0);
 
     await page.locator("#new-password").fill(NEW_PASSWORD);
     await page.locator("#confirm-new-password").fill(NEW_PASSWORD);
