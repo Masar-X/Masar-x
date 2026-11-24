@@ -42,7 +42,9 @@ export async function fetchQuizWithQuestions(
 
   const { data: questions, error: questionsError } = await supabase
     .from("quiz_questions")
-    .select("id, quiz_id, question, options, correct_answer, explanation, image_url, order_index")
+    // Key-less column select (spec 040): the answer key never
+    // reaches the client; grading is server-authoritative.
+    .select("id, quiz_id, question, options, explanation, image_url, order_index")
     .eq("quiz_id", quizId)
     .order("order_index", { ascending: true });
   if (questionsError) throw questionsError;
@@ -52,7 +54,6 @@ export async function fetchQuizWithQuestions(
     quiz_id: string;
     question: string;
     options: string[] | null;
-    correct_answer: number;
     explanation: string | null;
     image_url: string | null;
     order_index: number;
@@ -66,7 +67,6 @@ export async function fetchQuizWithQuestions(
       id: row.id,
       question: row.question,
       options: Array.isArray(row.options) ? row.options : [],
-      correctAnswer: row.correct_answer,
       explanation: row.explanation,
     })),
   };
@@ -133,28 +133,142 @@ export interface AttemptAnswerPayload {
 
 /**
  * Finish the attempt (spec 030): grading is server-authoritative. The
- * finish_quiz_attempt RPC re-grades every saved answer against
- * quiz_questions.correct_answer, overwrites the client-sent is_correct
- * flags, computes score/total server-side, and rebuilds the answers jsonb
+ * finish_quiz_attempt RPC re-grades every saved answer against the
+ * server-side answer key, overwrites the client-sent is_correct flags,
+ * computes score/total server-side, and rebuilds the answers jsonb
  * (answered rows only, order_index-ordered) — the client no longer sends
- * score, total, or an answers payload. The returned numbers are the trusted
- * ones the results screen displays.
+ * score, total, or an answers payload. The returned numbers and graded
+ * answers are the trusted ones the results screen displays.
  */
 export async function finishAttempt(
   supabase: SupabaseClient,
   attemptId: string,
   details: { timeTakenSeconds?: number | null } = {},
-): Promise<{ score: number; totalQuestions: number }> {
+): Promise<{
+  score: number;
+  totalQuestions: number;
+  answers: AttemptAnswerPayload[];
+}> {
   const { data, error } = await supabase.rpc("finish_quiz_attempt", {
     p_attempt_id: attemptId,
     p_time_taken_seconds: details.timeTakenSeconds ?? null,
   });
   if (error) throw error;
 
-  const result = (data ?? {}) as { score?: number; total_questions?: number };
+  const result = (data ?? {}) as {
+    score?: number;
+    total_questions?: number;
+    answers?: AttemptAnswerPayload[];
+  };
   return {
     score: result.score ?? 0,
     totalQuestions: result.total_questions ?? 0,
+    answers: Array.isArray(result.answers) ? result.answers : [],
+  };
+}
+
+export interface CompleteQuizAttemptParams {
+  supabase: SupabaseClient;
+  quizId: string;
+  quizTitle: string;
+  userId: string | null | undefined;
+  questions: PlayerQuestion[];
+  answers: Array<number | null>;
+  timeTakenSeconds: number;
+}
+
+export interface CompleteQuizAttemptResult {
+  score: number;
+  total: number;
+  savedToServer: boolean;
+  isGuest: boolean;
+  gradedAnswers?: AttemptAnswerPayload[];
+}
+
+function isQuestionCorrect(
+  question: PlayerQuestion,
+  choice: number | null | undefined,
+): boolean {
+  // DB-fetched questions omit correctAnswer (spec 040 column grants);
+  // local correctness is false until finish_quiz_attempt grades server-side.
+  return (
+    question.correctAnswer !== undefined &&
+    choice !== null &&
+    choice !== undefined &&
+    choice === question.correctAnswer
+  );
+}
+
+/**
+ * Complete a mobile quiz attempt (web parity):
+ * - Signed-in users persist answers and receive server-authoritative
+ *   score/total/gradedAnswers from finish_quiz_attempt.
+ * - Guests save locally via saveGuestResult without client-side answer-key
+ *   grading or per-question gradedAnswers review.
+ */
+export async function completeQuizAttempt({
+  supabase,
+  quizId,
+  quizTitle,
+  userId,
+  questions,
+  answers,
+  timeTakenSeconds,
+}: CompleteQuizAttemptParams): Promise<CompleteQuizAttemptResult> {
+  const answersPayload: AttemptAnswerPayload[] = questions.map((q, i) => ({
+    question_id: q.id,
+    selected_option: answers[i] ?? -1,
+    is_correct: isQuestionCorrect(q, answers[i]),
+  }));
+  const localScore = answersPayload.reduce(
+    (acc, entry) => acc + (entry.is_correct ? 1 : 0),
+    0,
+  );
+
+  if (userId) {
+    const attempt = await startAttempt(supabase, quizId, userId);
+    for (let i = 0; i < questions.length; i += 1) {
+      const choice = answers[i];
+      if (choice === null || choice === undefined) continue;
+      await saveAnswer(
+        supabase,
+        attempt.id,
+        questions[i].id,
+        choice,
+        isQuestionCorrect(questions[i], choice),
+      );
+    }
+    const graded = await finishAttempt(supabase, attempt.id, {
+      timeTakenSeconds,
+    });
+    return {
+      score: graded.score,
+      total: graded.totalQuestions,
+      savedToServer: true,
+      isGuest: false,
+      gradedAnswers: graded.answers,
+    };
+  }
+
+  await saveGuestResult(quizId, {
+    quizId,
+    score: localScore,
+    total: questions.length,
+    finishedAt: new Date().toISOString(),
+    title: quizTitle,
+    timeTakenSeconds,
+    answers: answersPayload.map((a) => ({
+      questionId: a.question_id,
+      selected: a.selected_option,
+      isCorrect: a.is_correct,
+    })),
+  });
+
+  return {
+    score: localScore,
+    total: questions.length,
+    savedToServer: false,
+    isGuest: true,
   };
 }
 

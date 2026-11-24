@@ -235,15 +235,11 @@ export default function QuizAttemptsScreen() {
               <MathText text={question.question} rtl={locale === "ar"} />
               {question.options.map((option, optionIndex) => {
                 const isSelected = answered && selected === optionIndex;
-                const isCorrectOption = optionIndex === question.correctAnswer;
-                const style =
-                  isSelected && isCorrectOption
+                const style = isSelected
+                  ? answer?.is_correct
                     ? styles.reviewOptionCorrect
-                    : isSelected && !isCorrectOption
-                      ? styles.reviewOptionWrong
-                      : isCorrectOption
-                        ? styles.reviewOptionCorrectKey
-                        : null;
+                    : styles.reviewOptionWrong
+                  : null;
                 return (
                   <View key={`${question.id}:${optionIndex}`} style={[styles.reviewOption, style]}>
                     <Text style={[styles.reviewOptionText, isRTL && styles.rtlText]}>
@@ -408,7 +404,6 @@ const createStyles = (colors: Palette) =>
   },
   reviewOptionCorrect: { borderColor: colors.success, backgroundColor: colors.successBg },
   reviewOptionWrong: { borderColor: colors.danger, backgroundColor: colors.dangerBg },
-  reviewOptionCorrectKey: { borderColor: colors.primary, backgroundColor: colors.accentBg },
   reviewOptionText: { color: colors.ink, fontSize: 13 },
   reviewUnsolved: { color: colors.subtle, fontSize: 12, marginTop: 6 },
   reviewExplanation: { marginTop: 8 },

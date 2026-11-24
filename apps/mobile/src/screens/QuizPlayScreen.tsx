@@ -37,11 +37,8 @@ import { useI18n } from "../context/I18nContext";
 import { useTheme } from "../context/ThemeContext";
 import type { Palette } from "../lib/theme";
 import {
+  completeQuizAttempt,
   fetchQuizWithQuestions,
-  finishAttempt,
-  saveAnswer,
-  saveGuestResult,
-  startAttempt,
   type AttemptAnswerPayload,
 } from "../lib/quiz";
 import {
@@ -66,6 +63,8 @@ interface FinishResult {
   score: number;
   total: number;
   savedToServer: boolean;
+  isGuest: boolean;
+  gradedAnswers?: AttemptAnswerPayload[];
 }
 
 export default function QuizPlayScreen() {
@@ -155,67 +154,36 @@ export default function QuizPlayScreen() {
     if (!quiz || submitting || finishingRef.current) return;
     finishingRef.current = true;
     const questions = quiz.questions;
-    const finalScore = questions.reduce(
-      (acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0),
-      0,
-    );
-    // Web parity: whole seconds of wall-clock attempt time + the
-    // per-question answers payload (unanswered questions recorded with
-    // selected_option -1 so review can show them as unsolved).
     const timeTakenSeconds = computeTimeTakenSeconds(
       attemptStartRef.current ?? Date.now(),
       Date.now(),
     );
-    const answersPayload: AttemptAnswerPayload[] = questions.map((q, i) => ({
-      question_id: q.id,
-      selected_option: answers[i] ?? -1,
-      is_correct: answers[i] === q.correctAnswer,
-    }));
     setSubmitting(true);
-    let savedToServer = false;
-    let resultScore = finalScore;
-    let resultTotal = questions.length;
+    let nextResult: FinishResult = {
+      score: 0,
+      total: questions.length,
+      savedToServer: false,
+      isGuest: !user,
+    };
     try {
-      if (user) {
-        const attempt = await startAttempt(getSupabase(), quizId, user.id);
-        for (let i = 0; i < questions.length; i += 1) {
-          const choice = answers[i];
-          if (choice === null || choice === undefined) continue;
-          await saveAnswer(
-            getSupabase(),
-            attempt.id,
-            questions[i].id,
-            choice,
-            choice === questions[i].correctAnswer,
-          );
-        }
-        // Server-authoritative grading (spec 030): the RPC re-grades every
-        // saved answer and returns the trusted score/total.
-        const graded = await finishAttempt(getSupabase(), attempt.id, {
-          timeTakenSeconds,
-        });
-        savedToServer = true;
-        resultScore = graded.score;
-        resultTotal = graded.totalQuestions;
-      } else {
-        await saveGuestResult(quizId, {
-          quizId,
-          score: finalScore,
-          total: questions.length,
-          finishedAt: new Date().toISOString(),
-          title: quiz.title,
-          timeTakenSeconds,
-          answers: answersPayload.map((a) => ({
-            questionId: a.question_id,
-            selected: a.selected_option,
-            isCorrect: a.is_correct,
-          })),
-        });
-      }
+      nextResult = await completeQuizAttempt({
+        supabase: getSupabase(),
+        quizId,
+        quizTitle: quiz.title,
+        userId: user?.id,
+        questions,
+        answers,
+        timeTakenSeconds,
+      });
     } catch {
-      savedToServer = false;
+      nextResult = {
+        score: 0,
+        total: questions.length,
+        savedToServer: false,
+        isGuest: !user,
+      };
     } finally {
-      setResult({ score: resultScore, total: resultTotal, savedToServer });
+      setResult(nextResult);
       setSubmitting(false);
       setPhase("finished");
     }
@@ -299,14 +267,47 @@ export default function QuizPlayScreen() {
             {result.score} / {result.total}
           </Text>
           <Text style={styles.praise}>{t("quizzes", praiseKey)}</Text>
-          <Text
-            style={[
-              styles.saveNote,
-              result.savedToServer ? styles.saveOk : styles.saveOffline,
-            ]}
-          >
-            {result.savedToServer ? t("quizzes", "saved") : t("mobile", "quiz.savingOffline")}
-          </Text>
+          {result.isGuest ? null : (
+            <Text
+              style={[
+                styles.saveNote,
+                result.savedToServer ? styles.saveOk : styles.saveOffline,
+              ]}
+            >
+              {result.savedToServer ? t("quizzes", "saved") : t("mobile", "quiz.savingOffline")}
+            </Text>
+          )}
+          {result.gradedAnswers && result.gradedAnswers.length > 0 ? (
+            <View style={styles.gradedSection}>
+              <Text style={styles.gradedHeading}>{t("quizzes", "answersReview")}</Text>
+              <View style={styles.gradedPills}>
+                {result.gradedAnswers.map((a, i) => (
+                  <View
+                    key={a.question_id}
+                    style={[
+                      styles.gradedPill,
+                      a.is_correct ? styles.gradedPillCorrect : styles.gradedPillWrong,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.gradedPillText,
+                        a.is_correct ? styles.gradedPillTextCorrect : styles.gradedPillTextWrong,
+                      ]}
+                    >
+                      {i + 1}. {a.is_correct ? "✓" : "✗"}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+          {result.isGuest ? (
+            <View style={styles.guestBanner}>
+              <Text style={styles.guestBannerTitle}>{t("quizzes", "guestMode")}</Text>
+              <Text style={styles.guestBannerBody}>{t("quizzes", "guestNotice")}</Text>
+            </View>
+          ) : null}
           <Pressable style={styles.button} onPress={() => navigation.goBack()}>
             <Text style={styles.buttonText}>{t("quizzes", "backToHome")}</Text>
           </Pressable>
@@ -528,6 +529,50 @@ const createStyles = (colors: Palette) =>
   saveNote: { fontSize: 13, marginBottom: 20 },
   saveOk: { color: colors.success },
   saveOffline: { color: colors.subtle },
+  gradedSection: { width: "100%", marginBottom: 20 },
+  gradedHeading: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  gradedPills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+  gradedPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  gradedPillCorrect: { backgroundColor: colors.successBg },
+  gradedPillWrong: { backgroundColor: colors.dangerBg },
+  gradedPillText: { fontSize: 12, fontWeight: "700" },
+  gradedPillTextCorrect: { color: colors.success },
+  gradedPillTextWrong: { color: colors.danger },
+  guestBanner: {
+    width: "100%",
+    backgroundColor: colors.banner,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 20,
+  },
+  guestBannerTitle: {
+    color: colors.bannerText,
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  guestBannerBody: {
+    color: colors.bannerText,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   button: {
     backgroundColor: colors.primary,
     borderRadius: 12,
