@@ -5,7 +5,14 @@ priority: P1
 status: todo
 depends_on: []
 touches:
-  - "packages/shared/**"
+  - "packages/shared/package.json"
+  - "packages/shared/eslint.config.mjs"
+  - "packages/shared/tsconfig.json"
+  - "packages/shared/src/index.ts"
+  - "packages/shared/src/types/schemas/__tests__/unused-exports-guard.test.ts"
+  - "packages/shared/src/i18n/**"
+  - "packages/shared/src/quiz/**"
+  - "packages/shared/src/lectures/**"
   - "apps/mobile/src/i18n.ts"
   - "apps/mobile/src/lib/quiz.ts"
   - "apps/mobile/src/lib/lecture-content.ts"

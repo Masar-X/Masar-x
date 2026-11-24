@@ -9,7 +9,15 @@ touches:
   - "packages/shared/vitest.config.ts"
   - "apps/desktop/vitest.config.ts"
   - "apps/mobile/vitest.config.ts"
-  - "apps/web/e2e/**"
+  - "apps/web/e2e/news-faq.spec.ts"
+  - "apps/web/e2e/subjects-catalog.spec.ts"
+  - "apps/web/e2e/subjects-levels.spec.ts"
+  - "apps/web/e2e/materials.spec.ts"
+  - "apps/web/e2e/downloads.spec.ts"
+  - "apps/web/e2e/trw-pages.spec.ts"
+  - "apps/web/e2e/footer.spec.ts"
+  - "apps/web/e2e/quizzes-list.spec.ts"
+  - "apps/web/e2e/lecture-detail.spec.ts"
 owner_action: false
 area: web
 estimate: 1d

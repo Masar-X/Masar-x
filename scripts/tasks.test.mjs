@@ -6,11 +6,14 @@ import { describe, it } from "node:test";
 
 import {
   DEFAULT_WIP_LIMIT,
+  applyMainCardStatuses,
   buildIssueCreateArgs,
   compareCards,
   computeStatusRows,
   deriveCardStatus,
+  getLatestBranchActivity,
   globsOverlap,
+  isRefAlreadyExistsError,
   lintCards,
   loadTaskCards,
   normalizePosixPath,
@@ -260,6 +263,8 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
         const stdout = [];
         const exec = (cmd, args) => {
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") {
             return [
               "111\trefs/heads/task/T-001",
@@ -325,9 +330,10 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
         const exec = (cmd, args) => {
           calls.push([cmd, ...args]);
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-001\n";
           if (cmd === "gh" && args[0] === "pr") return "[]";
-          if (cmd === "git" && args[0] === "fetch") return "";
           if (cmd === "git" && args[0] === "rev-parse") return "deadbeef1234\n";
           if (cmd === "gh" && args[0] === "api") {
             const refArg = args.find((a) => a.startsWith("ref="));
@@ -356,7 +362,7 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
         assert.equal(res.selected.id, "T-004");
         assert.equal(res.branch, "task/T-004");
         assert.equal(res.worktreePath, "../masarx-wt/task-T-004");
-        assert.match(stderr.join("\n"), /422.*T-003/);
+        assert.match(stderr.join("\n"), /T-003 \(Reference already exists\)/);
         assert.ok(
           calls.some(
             (c) =>
@@ -385,6 +391,8 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
         const exec = (cmd, args) => {
           calls.push([cmd, ...args]);
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-001\n";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           throw new Error(`Should not have run: ${cmd} ${args.join(" ")}`);
@@ -432,8 +440,14 @@ describe("release guards", () => {
       if (cmd === "gh" && args[0] === "pr") {
         return JSON.stringify([{ number: 77, url: "https://github.com/Masar-X/Masar-x/pull/77" }]);
       }
-      if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/commits/")) {
-        return "2026-11-20T00:00:00Z\n";
+      if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/activity")) {
+        return JSON.stringify([
+          {
+            activity_type: "branch_creation",
+            ref: "refs/heads/task/T-001",
+            timestamp: "2026-11-20T00:00:00Z",
+          },
+        ]);
       }
       if (cmd === "gh" && args[0] === "api" && args[1] === "-X") {
         return "";
@@ -461,16 +475,16 @@ describe("release guards", () => {
     assert.ok(calls.some((c) => c.includes("DELETE") && c.at(-1).endsWith("/refs/heads/task/T-001")));
   });
 
-  it("refuses release when last commit is < 24h old unless --force, and allows >= 24h", () => {
-    const makeExec = (commitDate) => {
+  it("refuses release when latest activity is < 24h old unless --force, allows > 24h, and refuses empty activity", () => {
+    const makeExec = (activities) => {
       const calls = [];
       const exec = (cmd, args) => {
         calls.push([cmd, ...args]);
         if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
         if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-002\n";
         if (cmd === "gh" && args[0] === "pr") return "[]";
-        if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/commits/")) {
-          return `${commitDate}\n`;
+        if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/activity")) {
+          return JSON.stringify(activities);
         }
         if (cmd === "gh" && args[0] === "api" && args[1] === "-X") return "";
         throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
@@ -478,19 +492,28 @@ describe("release guards", () => {
       return { exec, calls };
     };
 
-    // 5 hours ago -> refuse
-    const recent = makeExec("2026-11-24T07:00:00Z");
+    // Fresh branch_creation (1h ago) -> refuse with exact age & timestamp
+    const freshStderr = [];
+    const recent = makeExec([
+      {
+        activity_type: "branch_creation",
+        ref: "refs/heads/task/T-002",
+        timestamp: "2026-11-24T11:00:00Z",
+      },
+    ]);
     const r1 = runRelease(["T-002"], {
       exec: recent.exec,
       now: () => nowMs,
       out: () => {},
-      err: () => {},
+      err: (m) => freshStderr.push(m),
     });
     assert.equal(r1.exitCode, 1);
-    assert.equal(r1.reason, "recent-commit");
+    assert.equal(r1.reason, "recent-activity");
+    assert.equal(r1.ageHours, 1);
+    assert.match(freshStderr.join("\n"), /1\.0h old.*2026-11-24T11:00:00Z/);
     assert.equal(recent.calls.some((c) => c.includes("DELETE")), false);
 
-    // 5 hours ago with --force -> delete
+    // 1h ago with --force -> delete
     const r2 = runRelease(["T-002", "--force"], {
       exec: recent.exec,
       now: () => nowMs,
@@ -500,8 +523,19 @@ describe("release guards", () => {
     assert.equal(r2.exitCode, 0);
     assert.equal(recent.calls.some((c) => c.includes("DELETE")), true);
 
-    // 25 hours ago -> delete without --force
-    const stale = makeExec("2026-11-23T11:00:00Z");
+    // push > 24h ago -> delete without --force (ignores unrelated ref entries)
+    const stale = makeExec([
+      {
+        activity_type: "push",
+        ref: "refs/heads/task/T-002",
+        timestamp: "2026-11-23T11:00:00Z",
+      },
+      {
+        activity_type: "push",
+        ref: "refs/heads/task/T-999",
+        timestamp: "2026-11-24T11:55:00Z",
+      },
+    ]);
     const r3 = runRelease(["T-002"], {
       exec: stale.exec,
       now: () => nowMs,
@@ -510,6 +544,29 @@ describe("release guards", () => {
     });
     assert.equal(r3.exitCode, 0);
     assert.equal(stale.calls.some((c) => c.includes("DELETE")), true);
+
+    // Empty activity [] -> refuse without --force, allow with --force
+    const empty = makeExec([]);
+    const emptyStderr = [];
+    const r4 = runRelease(["T-002"], {
+      exec: empty.exec,
+      now: () => nowMs,
+      out: () => {},
+      err: (m) => emptyStderr.push(m),
+    });
+    assert.equal(r4.exitCode, 1);
+    assert.equal(r4.reason, "no-activity");
+    assert.match(emptyStderr.join("\n"), /--force/);
+    assert.equal(empty.calls.some((c) => c.includes("DELETE")), false);
+
+    const r5 = runRelease(["T-002", "--force"], {
+      exec: empty.exec,
+      now: () => nowMs,
+      out: () => {},
+      err: () => {},
+    });
+    assert.equal(r5.exitCode, 0);
+    assert.equal(empty.calls.some((c) => c.includes("DELETE")), true);
   });
 });
 
@@ -524,6 +581,8 @@ describe("status and sync-issues", () => {
         const stdout = [];
         const exec = (cmd, args) => {
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-002\n";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
@@ -792,8 +851,14 @@ describe("PR #310 fixup: sub-cards and blocked PR touch isolation", () => {
             if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
             if (cmd === "git" && args[0] === "ls-remote") return "abc\trefs/heads/task/T-017c\n";
             if (cmd === "gh" && args[0] === "pr") return "[]";
-            if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/commits/")) {
-              return "2026-11-22T00:00:00Z\n";
+            if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/activity")) {
+              return JSON.stringify([
+                {
+                  activity_type: "branch_creation",
+                  ref: "refs/heads/task/T-017c",
+                  timestamp: "2026-11-22T00:00:00Z",
+                },
+              ]);
             }
             if (cmd === "gh" && args[0] === "api" && args[1] === "-X") {
               deletedCalls.push(args.at(-1));
@@ -874,6 +939,251 @@ describe("PR #310 fixup: sub-cards and blocked PR touch isolation", () => {
             (s) => s.id === "T-004" && /T-003 \(blocked\)/.test(s.reason)
           )
         );
+      }
+    );
+  });
+});
+
+describe("PR #310 logic bugfix round", () => {
+  it("isRefAlreadyExistsError matches Reference already exists only, not generic 422", () => {
+    assert.equal(
+      isRefAlreadyExistsError({ stderr: "gh: Reference already exists (HTTP 422)" }),
+      true
+    );
+    assert.equal(
+      isRefAlreadyExistsError({
+        status: 422,
+        stderr: "gh: Repository rule violations found (HTTP 422)",
+      }),
+      false
+    );
+    assert.equal(
+      isRefAlreadyExistsError({
+        status: 403,
+        stderr: "gh: Resource not accessible by integration (HTTP 403)",
+      }),
+      false
+    );
+  });
+
+  it("aborts immediately without retrying on non-collision 422 (Repository rule violations) and 403", () => {
+    for (const failureCase of [
+      {
+        label: "non-collision 422",
+        stderr: '{"message":"Repository rule violations found","status":"422"}',
+        message: "HTTP 422",
+      },
+      {
+        label: "403 forbidden",
+        stderr: '{"message":"Resource not accessible by personal access token","status":"403"}',
+        message: "HTTP 403",
+      },
+    ]) {
+      withTempTasksDir(
+        {
+          "T-001.md": makeCardMarkdown({ id: "T-001", priority: "P0", touches: '["apps/web/a.ts"]' }),
+          "T-002.md": makeCardMarkdown({ id: "T-002", priority: "P1", touches: '["apps/web/b.ts"]' }),
+        },
+        ({ rootDir, tasksDir }) => {
+          const apiCalls = [];
+          const stderr = [];
+          const exec = (cmd, args) => {
+            if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+            if (cmd === "git" && args[0] === "fetch") return "";
+            if (cmd === "git" && args[0] === "ls-tree") return "";
+            if (cmd === "git" && args[0] === "ls-remote") return "";
+            if (cmd === "gh" && args[0] === "pr") return "[]";
+            if (cmd === "git" && args[0] === "rev-parse") return "deadbeef\n";
+            if (cmd === "gh" && args[0] === "api") {
+              apiCalls.push(args.join(" "));
+              const err = new Error(failureCase.message);
+              err.stderr = failureCase.stderr;
+              throw err;
+            }
+            throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
+          };
+
+          const res = runNext([], {
+            cwd: rootDir,
+            tasksDir,
+            exec,
+            out: () => {},
+            err: (m) => stderr.push(m),
+          });
+
+          assert.equal(res.exitCode, 1, failureCase.label);
+          assert.equal(res.reason, "claim-rejected", failureCase.label);
+          assert.equal(apiCalls.length, 1, `${failureCase.label}: must not retry T-002`);
+          const errText = stderr.join("\n");
+          assert.ok(errText.includes(failureCase.stderr), `${failureCase.label}: prints full body`);
+          assert.match(errText, /Owner action required:.*rulesets|permissions/i);
+        }
+      );
+    }
+  });
+
+  it("getLatestBranchActivity picks latest push/force_push/branch_creation and release refuses when API fails", () => {
+    const latest = getLatestBranchActivity(
+      [
+        {
+          activity_type: "branch_creation",
+          ref: "refs/heads/task/T-001",
+          timestamp: "2026-11-23T08:00:00Z",
+        },
+        {
+          activity_type: "force_push",
+          ref: "refs/heads/task/T-001",
+          timestamp: "2026-11-24T09:00:00Z",
+        },
+        {
+          activity_type: "branch_deletion",
+          ref: "refs/heads/task/T-001",
+          timestamp: "2026-11-24T11:30:00Z",
+        },
+      ],
+      "T-001"
+    );
+    assert.equal(latest.activityType, "force_push");
+    assert.equal(latest.timestamp, "2026-11-24T09:00:00Z");
+
+    const stderr = [];
+    const failed = runRelease(["T-001"], {
+      now: () => Date.parse("2026-11-24T12:00:00Z"),
+      exec: (cmd, args) => {
+        if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+        if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-001\n";
+        if (cmd === "gh" && args[0] === "pr") return "[]";
+        if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/activity")) {
+          const err = new Error("API 500");
+          err.stderr = "Internal Server Error";
+          throw err;
+        }
+        throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
+      },
+      out: () => {},
+      err: (m) => stderr.push(m),
+    });
+    assert.equal(failed.exitCode, 1);
+    assert.equal(failed.reason, "no-activity");
+    assert.match(stderr.join("\n"), /--force/);
+  });
+
+  it("reads done status authoritatively from origin/main when docs/tasks exists there", () => {
+    // Case 1: origin/main has T-001 as done while local worktree has T-001 as todo -> unlocks T-002
+    withTempTasksDir(
+      {
+        "T-001.md": makeCardMarkdown({ id: "T-001", priority: "P0", status: "todo", touches: '["a.ts"]' }),
+        "T-002.md": makeCardMarkdown({
+          id: "T-002",
+          priority: "P0",
+          status: "todo",
+          depends_on: "[T-001]",
+          touches: '["b.ts"]',
+        }),
+      },
+      ({ rootDir, tasksDir }) => {
+        const exec = (cmd, args) => {
+          if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") {
+            return ["docs/tasks/T-001.md", "docs/tasks/T-002.md"].join("\n");
+          }
+          if (cmd === "git" && args[0] === "show" && args[1] === "origin/main:docs/tasks/T-001.md") {
+            return makeCardMarkdown({ id: "T-001", priority: "P0", status: "done", touches: '["a.ts"]' });
+          }
+          if (cmd === "git" && args[0] === "show" && args[1] === "origin/main:docs/tasks/T-002.md") {
+            return makeCardMarkdown({
+              id: "T-002",
+              priority: "P0",
+              status: "todo",
+              depends_on: "[T-001]",
+              touches: '["b.ts"]',
+            });
+          }
+          if (cmd === "git" && args[0] === "ls-remote") return "";
+          if (cmd === "gh" && args[0] === "pr") return "[]";
+          throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
+        };
+
+        const statusRes = runStatus({ cwd: rootDir, tasksDir, exec, out: () => {}, err: () => {} });
+        assert.equal(statusRes.exitCode, 0);
+        assert.equal(statusRes.rows.find((r) => r.id === "T-001").status, "done");
+        assert.equal(statusRes.rows.find((r) => r.id === "T-002").status, "todo");
+
+        const nextRes = runNext(["--dry-run"], {
+          cwd: rootDir,
+          tasksDir,
+          exec,
+          out: () => {},
+          err: () => {},
+        });
+        assert.equal(nextRes.exitCode, 0);
+        assert.equal(nextRes.selected.id, "T-002");
+      }
+    );
+
+    // Case 2: local worktree has T-001 as done while origin/main has T-001 as todo -> status sees todo
+    withTempTasksDir(
+      {
+        "T-001.md": makeCardMarkdown({ id: "T-001", priority: "P0", status: "done", touches: '["a.ts"]' }),
+      },
+      ({ rootDir, tasksDir }) => {
+        const exec = (cmd, args) => {
+          if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") return "docs/tasks/T-001.md\n";
+          if (cmd === "git" && args[0] === "show" && args[1] === "origin/main:docs/tasks/T-001.md") {
+            return makeCardMarkdown({ id: "T-001", priority: "P0", status: "todo", touches: '["a.ts"]' });
+          }
+          if (cmd === "git" && args[0] === "ls-remote") return "";
+          if (cmd === "gh" && args[0] === "pr") return "[]";
+          throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
+        };
+
+        const statusRes = runStatus({ cwd: rootDir, tasksDir, exec, out: () => {}, err: () => {} });
+        assert.equal(statusRes.exitCode, 0);
+        assert.equal(statusRes.rows.find((r) => r.id === "T-001").status, "todo");
+
+        const { cards } = loadTaskCards(tasksDir);
+        const applied = applyMainCardStatuses(cards, exec, rootDir, { skipFetch: true });
+        assert.equal(applied.source, "origin/main");
+        assert.equal(cards[0].status, "todo");
+      }
+    );
+  });
+
+  it("blocked status comes strictly from open PRs on task/* and never from issue labels", () => {
+    const calledCommands = [];
+    withTempTasksDir(
+      {
+        "T-001.md": makeCardMarkdown({
+          id: "T-001",
+          owner_action: true,
+          touches: '["docs/a.md"]',
+        }),
+      },
+      ({ rootDir, tasksDir }) => {
+        const exec = (cmd, args) => {
+          calledCommands.push(`${cmd} ${args.join(" ")}`);
+          if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "git" && args[0] === "fetch") return "";
+          if (cmd === "git" && args[0] === "ls-tree") return "";
+          if (cmd === "git" && args[0] === "ls-remote") return "";
+          if (cmd === "gh" && args[0] === "pr") return "[]";
+          throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
+        };
+
+        const statusRes = runStatus({ cwd: rootDir, tasksDir, exec, out: () => {}, err: () => {} });
+        assert.equal(statusRes.exitCode, 0);
+        assert.equal(statusRes.rows[0].status, "todo");
+        assert.equal(
+          calledCommands.some((c) => c.startsWith("gh issue")),
+          false
+        );
+
+        const issueArgs = buildIssueCreateArgs(statusRes.rows[0].card, { repo: "Masar-X/Masar-x" });
+        const bodyArg = issueArgs[issueArgs.indexOf("--body") + 1];
+        assert.doesNotMatch(bodyArg, /blocked|changes status/i);
       }
     );
   });

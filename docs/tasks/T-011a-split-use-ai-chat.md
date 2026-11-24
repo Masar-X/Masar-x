@@ -7,7 +7,7 @@ depends_on: []
 touches:
   - "apps/web/src/hooks/useAiChat.ts"
   - "apps/web/src/hooks/ai-chat/**"
-  - "apps/web/src/hooks/__tests__/useAiChat*"
+  - "apps/web/src/hooks/__tests__/useAiChat.test.tsx"
 owner_action: false
 area: web
 estimate: 0.5d

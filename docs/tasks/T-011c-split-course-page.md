@@ -6,7 +6,8 @@ status: todo
 depends_on:
   - T-010
 touches:
-  - "apps/web/src/app/[locale]/courses/[courseId]/**"
+  - "apps/web/src/app/[locale]/courses/[courseId]/page.tsx"
+  - "apps/web/src/app/[locale]/courses/[courseId]/_hooks/**"
   - "apps/web/src/components/courses/**"
 owner_action: false
 area: web

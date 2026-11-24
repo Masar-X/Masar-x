@@ -9,8 +9,8 @@ Frontmatter `status` may only be `todo` or `done` (set `status: done` only in th
 - `todo` — no remote branch `task/T-XXX` and all `depends_on` are `done` (`waiting-deps` when blocked by unmet `depends_on`)
 - `doing` — remote branch `refs/heads/task/T-XXX` exists and no open PR
 - `review` — open PR from `task/T-XXX` (without `blocked` / `owner-action`)
-- `blocked` — open PR or issue has label `blocked` or `owner-action`
-- `done` — card on `main` has `status: done`
+- `blocked` — open PR from `task/T-XXX` has label `blocked` or `owner-action` (issue labels alone never change status or reserve `touches`)
+- `done` — card on `origin/main` has `status: done` (`tasks:status` and `tasks:next` read `done` state from `origin/main`, falling back locally only before `docs/tasks/` exists on `origin/main`)
 
 ## Branch, Worktree & Claim Rules
 

@@ -874,11 +874,84 @@ function defaultExec(cmd, args, opts = {}) {
   });
 }
 
-export function isHttp422Error(err) {
+export function formatExecErrorBody(err) {
+  if (!err) return "";
+  const parts = [err.stderr, err.stdout, err.message]
+    .map((s) => (s == null ? "" : String(s).trim()))
+    .filter(Boolean);
+  return [...new Set(parts)].join("\n");
+}
+
+export function isRefAlreadyExistsError(err) {
   if (!err) return false;
-  if (err.status === 422 || err.statusCode === 422) return true;
   const text = `${err.message ?? ""}\n${err.stderr ?? ""}\n${err.stdout ?? ""}`;
-  return /\b422\b|Reference already exists/i.test(text);
+  return /Reference already exists/i.test(text);
+}
+
+const ACTIVITY_TYPES = new Set(["push", "force_push", "branch_creation"]);
+
+/**
+ * Extract the most recent push / force_push / branch_creation activity timestamp for `task/T-XXX`.
+ */
+export function getLatestBranchActivity(jsonText, taskId) {
+  const targetRef = `refs/heads/task/${taskId}`;
+  const list = typeof jsonText === "string" ? JSON.parse(jsonText || "[]") : (jsonText ?? []);
+  if (!Array.isArray(list)) return null;
+
+  let latest = null;
+  for (const entry of list) {
+    if (!entry || entry.ref !== targetRef) continue;
+    if (!ACTIVITY_TYPES.has(entry.activity_type)) continue;
+    const ms = Date.parse(entry.timestamp);
+    if (Number.isNaN(ms)) continue;
+    if (!latest || ms > latest.ms) {
+      latest = {
+        ms,
+        timestamp: String(entry.timestamp),
+        activityType: entry.activity_type,
+      };
+    }
+  }
+  return latest;
+}
+
+/**
+ * Authoritatively set each card's `status` (`done` | `todo`) from `origin/main:docs/tasks/T-*.md`
+ * when `docs/tasks/T-*.md` exists on `origin/main`. Falls back to local card statuses pre-merge.
+ */
+export function applyMainCardStatuses(cards, exec, cwd, { skipFetch = false } = {}) {
+  if (!skipFetch) {
+    exec("git", ["fetch", "origin", "main"], { cwd });
+  }
+  const treeOut = exec(
+    "git",
+    ["ls-tree", "-r", "--name-only", "origin/main", "--", "docs/tasks"],
+    { cwd }
+  );
+  const mainPaths = String(treeOut ?? "")
+    .split(/\r?\n/)
+    .map((line) => normalizePosixPath(line))
+    .filter((p) => /^docs\/tasks\/T-.*\.md$/i.test(p));
+
+  if (mainPaths.length === 0) {
+    return { source: "local", mainCardCount: 0 };
+  }
+
+  const mainStatusById = new Map();
+  for (const relPath of mainPaths) {
+    const content = exec("git", ["show", `origin/main:${relPath}`], { cwd });
+    const parsed = parseFrontmatter(content, `origin/main:${relPath}`);
+    const id = typeof parsed.data.id === "string" ? parsed.data.id : String(parsed.data.id ?? "");
+    if (id) {
+      mainStatusById.set(id, parsed.data.status === "done" ? "done" : "todo");
+    }
+  }
+
+  for (const card of cards) {
+    card.status = mainStatusById.get(card.id) === "done" ? "done" : "todo";
+  }
+
+  return { source: "origin/main", mainCardCount: mainStatusById.size };
 }
 
 function resolveRepoSlug(exec, cwd) {
@@ -937,6 +1010,7 @@ export function runStatus(opts = {}) {
     for (const e of errors) io.err(e);
     return { exitCode: 1, errors };
   }
+  applyMainCardStatuses(cards, io.exec, io.cwd, { skipFetch: Boolean(opts.skipFetch) });
   const repo = resolveRepoSlug(io.exec, io.cwd);
   const gitState = fetchGitState(io.exec, io.cwd, repo);
   const { rows, wipCount, wipCards } = computeStatusRows(cards, gitState);
@@ -959,6 +1033,7 @@ export function runNext(args = [], opts = {}) {
     return { exitCode: 1, errors };
   }
 
+  applyMainCardStatuses(cards, io.exec, io.cwd, { skipFetch: Boolean(opts.skipFetch) });
   const repo = resolveRepoSlug(io.exec, io.cwd);
   const gitState = fetchGitState(io.exec, io.cwd, repo);
   const selection = selectNextCandidates(cards, gitState, { wipLimit, force });
@@ -1009,7 +1084,9 @@ export function runNext(args = [], opts = {}) {
     };
   }
 
-  io.exec("git", ["fetch", "origin", "main"], { cwd: io.cwd });
+  if (opts.skipFetch) {
+    io.exec("git", ["fetch", "origin", "main"], { cwd: io.cwd });
+  }
   const sha = io.exec("git", ["rev-parse", "origin/main"], { cwd: io.cwd }).trim();
 
   const collidedCards = [];
@@ -1031,19 +1108,25 @@ export function runNext(args = [], opts = {}) {
       claimed = candidate;
       break;
     } catch (e) {
-      if (isHttp422Error(e)) {
+      if (isRefAlreadyExistsError(e)) {
         io.err(
-          `Collision (422) creating ${ref} for ${candidate.id}; trying next candidate...`
+          `Collision creating ${ref} for ${candidate.id} (Reference already exists); trying next candidate...`
         );
         collidedCards.push(candidate);
         continue;
       }
-      throw e;
+      const fullBody = formatExecErrorBody(e);
+      io.err(`Claim rejected creating ${ref} for ${candidate.id}:`);
+      if (fullBody) io.err(fullBody);
+      io.err(
+        "Owner action required: check GitHub repository rulesets or token permissions for refs/heads/task/*."
+      );
+      return { exitCode: 1, reason: "claim-rejected", error: fullBody };
     }
   }
 
   if (!claimed) {
-    io.err("All eligible candidates collided (422) when creating remote refs.");
+    io.err("All eligible candidates collided (Reference already exists) when creating remote refs.");
     return { exitCode: 1, reason: "all-collided", collidedCards };
   }
 
@@ -1109,29 +1192,40 @@ export function runRelease(args = [], opts = {}) {
     return { exitCode: 1, reason: "open-pr", openPrs };
   }
 
-  const rawDate = io
-    .exec(
+  let latestActivity = null;
+  let activityError = null;
+  try {
+    const rawActivity = io.exec(
       "gh",
-      ["api", `repos/${repo}/commits/task/${taskId}`, "--jq", ".commit.committer.date"],
+      ["api", `repos/${repo}/activity?ref=refs/heads/task/${taskId}&per_page=20`],
       { cwd: io.cwd }
-    )
-    .replace(/^"|"$/g, "")
-    .trim();
+    );
+    latestActivity = getLatestBranchActivity(rawActivity, taskId);
+  } catch (e) {
+    activityError = formatExecErrorBody(e) || String(e);
+  }
 
-  const commitMs = Date.parse(rawDate);
-  if (Number.isNaN(commitMs)) {
+  if (!latestActivity) {
     if (!force) {
-      io.err(`Refusing to release ${taskId}: could not parse last commit date '${rawDate}'.`);
-      return { exitCode: 1, reason: "invalid-date" };
+      const detail = activityError
+        ? `GitHub Activity API failed (${activityError})`
+        : `no matching push/force_push/branch_creation activity found for ${ref}`;
+      io.err(`Refusing to release ${taskId}: ${detail}. Use --force to override.`);
+      return { exitCode: 1, reason: "no-activity" };
     }
   } else {
-    const ageMs = io.now() - commitMs;
+    const ageMs = io.now() - latestActivity.ms;
     if (ageMs < HOURS_24_MS && !force) {
       const ageHours = (ageMs / (60 * 60 * 1000)).toFixed(1);
       io.err(
-        `Refusing to release ${taskId}: last commit on task/${taskId} is ${ageHours}h old (< 24h, committed ${rawDate}). Use --force to override.`
+        `Refusing to release ${taskId}: latest ${latestActivity.activityType} on task/${taskId} is ${ageHours}h old (< 24h, timestamp ${latestActivity.timestamp}). Use --force to override.`
       );
-      return { exitCode: 1, reason: "recent-commit", ageHours: Number(ageHours), commitDate: rawDate };
+      return {
+        exitCode: 1,
+        reason: "recent-activity",
+        ageHours: Number(ageHours),
+        timestamp: latestActivity.timestamp,
+      };
     }
   }
 

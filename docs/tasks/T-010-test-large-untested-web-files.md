@@ -5,8 +5,19 @@ priority: P1
 status: todo
 depends_on: []
 touches:
-  - "apps/web/src/app/**/__tests__/**"
-  - "apps/web/src/components/**/__tests__/**"
+  - "apps/web/src/app/[locale]/profile/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/subjects/[subject]/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/courses/[courseId]/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/news/_components/__tests__/NewsClient.test.tsx"
+  - "apps/web/src/app/[locale]/edit-summary/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/quiz-attempts/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/admin-dashboard/__tests__/AdminAnalyticsPage.test.tsx"
+  - "apps/web/src/app/[locale]/admin-dashboard/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/ai-assistant/__tests__/page.test.tsx"
+  - "apps/web/src/app/[locale]/summaries/[summaryId]/__tests__/page.test.tsx"
+  - "apps/web/src/components/sidenav/__tests__/AppNav.test.tsx"
+  - "apps/web/src/components/admin-shell/__tests__/AdminOverviewTab.test.tsx"
+  - "apps/web/src/components/admin-shell/__tests__/Sidebar.test.tsx"
 owner_action: false
 area: web
 estimate: 1d

@@ -6,7 +6,7 @@ status: todo
 depends_on:
   - T-010
 touches:
-  - "apps/web/src/app/[locale]/profile/**"
+  - "apps/web/src/app/[locale]/profile/page.tsx"
   - "apps/web/src/components/profile/**"
 owner_action: false
 area: web
