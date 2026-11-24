@@ -20,7 +20,13 @@
     "test": "pnpm -r --if-present test",
     "test:e2e": "pnpm --filter web test:e2e",
     "seed:launch": "node scripts/seed-mvp-launch.mjs",
-    "types:generate": "supabase gen types typescript --linked > packages/shared/src/types/database.generated.ts"
+    "types:generate": "supabase gen types typescript --linked > packages/shared/src/types/database.generated.ts",
+    "tasks:status": "node scripts/tasks.mjs status",
+    "tasks:next": "node scripts/tasks.mjs next",
+    "tasks:release": "node scripts/tasks.mjs release",
+    "tasks:sync-issues": "node scripts/tasks.mjs sync-issues",
+    "tasks:lint": "node scripts/tasks.mjs lint",
+    "tasks:test": "node --test scripts/tasks.test.mjs"
   },
   "devDependencies": {
     "fallow": "3.43.2"

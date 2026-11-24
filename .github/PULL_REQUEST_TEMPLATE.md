@@ -1,3 +1,7 @@
+## Card ID
+
+<!-- `T-XXX` (matching branch `task/T-XXX`) or `N/A` -->
+
 ## Summary
 
 <!-- One or two sentences describing what this PR does and why. -->
@@ -12,7 +16,11 @@
 
 ## What changed
 
-<!-- Bullet list of the notable changes. Link related issues/specs. -->
+<!-- Bullet list of the notable changes. Link related issues/specs/cards. -->
+
+## Evidence
+
+<!-- Paste the exact commands run and their real output (required for checked acceptance criteria). -->
 
 ## How was this tested?
 
@@ -22,6 +30,14 @@
 - [ ] `pnpm lint`
 - [ ] `pnpm test`
 - [ ] Manually verified in the running app
+
+## What I did NOT verify
+
+<!-- Explicitly list checks, environments, or platforms not tested in this PR (or `None`). -->
+
+## Owner actions needed
+
+<!-- Exact commands/settings for the owner if `owner_action: true` (or `None`). -->
 
 ## Contributor checklist
 
