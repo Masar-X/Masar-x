@@ -3,18 +3,16 @@
  * GoTrue send_email hook — renders and sends the platform's transactional
  * emails via Brevo.
  *
- * Hardening (review 2026-11-07 P0.2 "open relay": any caller with the public
- * anon key could trigger arbitrary emails with an attacker-controlled
- * redirect, and the default branch injected it unencoded into the HTML):
- *   1. Hook JWT verification — when SEND_EMAIL_HOOK_SECRET is configured
+ * Hardening (review 2026-11-07 P0.2 "open relay" + T-004 fail-closed gate):
+ *   1. Fail-closed secret check — when SEND_EMAIL_HOOK_SECRET is unset or
+ *      empty, every request is rejected with HTTP 500 (`Auth hook misconfigured`)
+ *      unless explicitly running in local development (`ENVIRONMENT === 'development'`).
+ *   2. Hook JWT verification — when SEND_EMAIL_HOOK_SECRET is configured
  *      (the base64 secret from Supabase Auth → Hooks → send_email), the
  *      `Authorization: Bearer <jwt>` GoTrue supplies must carry a valid
- *      HS256 signature; anything else is rejected before any processing
- *      (fail-closed).
- *   2. Restricted mode — while the secret is not configured, the function
- *      still refuses unknown email actions, allowlists the redirect origin,
- *      rate-limits per recipient, and logs a loud warning on every call so
- *      the gap stays visible. Deploying either way never breaks live email.
+ *      HS256 signature; missing or invalid tokens are rejected with HTTP 401.
+ *   3. Input & quota guards — refuses unknown email actions, allowlists the
+ *      redirect origin, and rate-limits per recipient.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { buildCorsHeaders } from '../_shared/cors.ts';
@@ -26,10 +24,6 @@ const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 const BREVO_SENDER_EMAIL = Deno.env.get('BREVO_SENDER_EMAIL') || 'masarx.eg@gmail.com';
 const BREVO_SENDER_NAME = Deno.env.get('BREVO_SENDER_NAME') || 'مسار X - منصة طلاب';
-
-// GoTrue signs the hook call as `Authorization: Bearer <jwt>` (HS256, key =
-// the base64 hook secret from the Auth dashboard). Empty = restricted mode.
-const SEND_EMAIL_HOOK_SECRET = Deno.env.get('SEND_EMAIL_HOOK_SECRET') ?? '';
 
 const ALLOWED_EMAIL_ACTIONS = new Set([
   'signup',
@@ -47,7 +41,7 @@ const base64ToBytes = (b64: string): Uint8Array => {
 };
 
 /** Verify the GoTrue hook JWT (HS256 over `header.payload`). */
-const verifyHookJwt = async (req: Request): Promise<boolean> => {
+const verifyHookJwt = async (req: Request, hookSecret: string): Promise<boolean> => {
   const header = req.headers.get('authorization') ?? '';
   const match = /^Bearer (.+)$/.exec(header.trim());
   if (!match) return false;
@@ -56,12 +50,14 @@ const verifyHookJwt = async (req: Request): Promise<boolean> => {
   try {
     const key = await crypto.subtle.importKey(
       'raw',
-      base64ToBytes(SEND_EMAIL_HOOK_SECRET).buffer as ArrayBuffer,
+      base64ToBytes(hookSecret).buffer as ArrayBuffer,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['verify'],
     );
-    const sig = base64ToBytes(parts[2].replace(/-/g, '+').replace(/_/g, '/'));
+    const sigB64 = parts[2].replace(/-/g, '+').replace(/_/g, '/');
+    const sigPadded = sigB64.padEnd(sigB64.length + ((4 - (sigB64.length % 4)) % 4), '=');
+    const sig = base64ToBytes(sigPadded);
     const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
     return await crypto.subtle.verify('HMAC', key, sig, data);
   } catch {
@@ -92,20 +88,26 @@ serve(async (req) => {
   }
 
   try {
-    if (!BREVO_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing BREVO_API_KEY' }), {
-        status: 500,
-        headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
-      });
-    }
+    // GoTrue signs the hook call as `Authorization: Bearer <jwt>` (HS256, key =
+    // the base64 hook secret from Supabase Auth → Hooks → send_email).
+    // Fail closed unless explicitly running in local development.
+    const hookSecret = (Deno.env.get('SEND_EMAIL_HOOK_SECRET') ?? '').trim();
+    const isLocalDev = Deno.env.get('ENVIRONMENT') === 'development';
 
-    if (!SEND_EMAIL_HOOK_SECRET) {
+    if (!hookSecret) {
+      if (!isLocalDev) {
+        console.error('[auth-hook-email] SEND_EMAIL_HOOK_SECRET is not configured — failing closed');
+        return new Response(JSON.stringify({ error: 'Auth hook misconfigured' }), {
+          status: 500,
+          headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
+        });
+      }
       console.warn(
-        '[auth-hook-email] SEND_EMAIL_HOOK_SECRET not configured — RESTRICTED mode ' +
-        '(signature unverified; set the Auth hook secret and this env var to close the relay fully)'
+        '[auth-hook-email] SEND_EMAIL_HOOK_SECRET not configured — local development fallback ' +
+        '(signature unverified; set SEND_EMAIL_HOOK_SECRET to test JWT verification)'
       );
     } else {
-      const signatureOk = await verifyHookJwt(req);
+      const signatureOk = await verifyHookJwt(req, hookSecret);
       if (!signatureOk) {
         console.warn('[auth-hook-email] rejected: hook JWT verification failed');
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -113,6 +115,13 @@ serve(async (req) => {
           headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
         });
       }
+    }
+
+    if (!BREVO_API_KEY) {
+      return new Response(JSON.stringify({ error: 'Missing BREVO_API_KEY' }), {
+        status: 500,
+        headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
+      });
     }
 
     const payload = await req.json();

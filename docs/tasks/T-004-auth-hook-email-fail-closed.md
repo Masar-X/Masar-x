@@ -40,12 +40,21 @@ Make `supabase/functions/auth-hook-email/index.ts` fail closed (`500` when `SEND
 
 <!-- Rule: `- [x]` is allowed ONLY when the very next line is `evidence: <command + real output>` (enforced by `pnpm tasks:lint`). -->
 
-- [ ] `cd supabase/functions && deno check --config deno.jsonc ./*/index.ts` exits 0.
-- [ ] `deno test --allow-env --import-map=supabase/functions/_shared/tests/import-map.json supabase/functions/_shared/tests/handler-auth-hook-email.test.ts` exits 0 covering `500` (missing secret), `401` (bad JWT), `400` (bad redirect), and `200` (valid HS256 JWT).
+- [x] `cd supabase/functions && deno check --config deno.jsonc ./*/index.ts` exits 0.
+  evidence: `deno check --config deno.jsonc ./*/index.ts` exited 0 (checked all 11 functions including `auth-hook-email/index.ts`).
+- [x] `deno test --allow-env --import-map=supabase/functions/_shared/tests/import-map.json supabase/functions/_shared/tests/handler-auth-hook-email.test.ts` exits 0 covering `500` (missing secret), `401` (bad JWT), `400` (bad redirect), and `200` (valid HS256 JWT).
+  evidence: `deno test --allow-env --import-map=supabase/functions/_shared/tests/import-map.json supabase/functions/_shared/tests/handler-auth-hook-email.test.ts` -> `ok | 9 passed | 0 failed (35ms)`; full Edge suite (`supabase/functions/_shared/tests/ supabase/functions/cloudinary-webhook/signature_test.ts`) -> `ok | 145 passed | 0 failed (1s)`.
 - [ ] PR is labeled `blocked` and `owner-action`, and owner confirms `SEND_EMAIL_HOOK_SECRET` appears in `supabase secrets list` (BEFORE merge) and comments `"owner step done"` on the PR.
 - [ ] Owner deploys `supabase functions deploy auth-hook-email` after merge.
 
 ## Evidence
+
+- Type-check (`supabase/functions`, Deno 2.9.7):
+  `deno check --config deno.jsonc ./*/index.ts` -> exit 0 across all 11 Edge Function entrypoints (`ai-chat`, `auth-hook-email`, `cloudinary-webhook`, `delete-avatar`, `delete-file`, `process-pdf`, `request-password-reset`, `reset-password`, `summarize-chat`, `upload-avatar`, `upload-file`).
+- Handler tests (`handler-auth-hook-email.test.ts`):
+  `deno test --allow-env --import-map=supabase/functions/_shared/tests/import-map.json supabase/functions/_shared/tests/handler-auth-hook-email.test.ts` -> `ok | 9 passed | 0 failed (35ms)`.
+- Full Deno Edge Function suite:
+  `deno test --allow-env --import-map=supabase/functions/_shared/tests/import-map.json supabase/functions/_shared/tests/ supabase/functions/cloudinary-webhook/signature_test.ts` -> `ok | 145 passed | 0 failed (1s)`.
 
 ## Rollback
 
