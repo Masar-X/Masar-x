@@ -766,7 +766,7 @@ export function formatStatusTable(rows, wipCount, wipLimit = DEFAULT_WIP_LIMIT) 
 }
 
 /**
- * Select ordered eligible `todo` candidates that do not overlap active `doing`/`review` cards.
+ * Select ordered eligible `todo` candidates that do not overlap active `doing`/`review`/`blocked` cards.
  */
 export function selectNextCandidates(
   cards,
@@ -787,7 +787,9 @@ export function selectNextCandidates(
     };
   }
 
-  const activeRows = rows.filter((r) => r.status === "doing" || r.status === "review");
+  const activeRows = rows.filter(
+    (r) => r.status === "doing" || r.status === "review" || r.status === "blocked"
+  );
   const candidates = [];
   const skipped = [];
 

@@ -3,8 +3,7 @@ id: T-007
 title: "Pin GitHub Actions by SHA and verify CI binary checksums"
 priority: P0
 status: todo
-depends_on:
-  - T-006
+depends_on: []
 touches:
   - ".github/workflows/ci.yml"
   - ".github/workflows/fallow.yml"
@@ -27,7 +26,7 @@ estimate: 0.5d
   - `ripgrep 14.1.1` at `.github/workflows/ci.yml:190`
   - `gitleaks 8.18.4` at `.github/workflows/ci.yml:250`
   - `actionlint v1.7.7` at `.github/workflows/ci.yml:564`
-- [VERIFIED] `depends_on: [T-006]` serializes this card after `T-006` edits `.github/workflows/ci.yml` so any new actions added by `T-006` are also SHA-pinned without merge conflicts.
+- [VERIFIED] `depends_on: []` — `touches` serializes `.github/workflows/ci.yml` against `T-006a` (no artificial dependency needed; whichever runs second also pins/preserves `ci.yml` actions).
 
 ## Goal
 
@@ -40,7 +39,7 @@ Eliminate mutable GitHub Action tag and unverified binary supply-chain surfaces 
 
 ## Steps
 
-1. Resolve the exact 40-character commit SHA for each of the 5 distinct action tags (`actions/checkout@v7`, `actions/setup-node@v7`, `pnpm/action-setup@v6`, `actions/upload-artifact@v7`, `denoland/setup-deno@v2`, plus any action added by `T-006`) via `gh api` / `git ls-remote`, and replace all 41+ mutable `uses:` references across `.github/workflows/ci.yml`, `fallow.yml`, `lighthouse.yml`, and `release.yml` with `<owner>/<repo>@<40-char-sha> # <tag>`.
+1. Resolve the exact 40-character commit SHA for each of the 5 distinct action tags (`actions/checkout@v7`, `actions/setup-node@v7`, `pnpm/action-setup@v6`, `actions/upload-artifact@v7`, `denoland/setup-deno@v2`, plus any action added by `T-006a`) via `gh api` / `git ls-remote`, and replace all 41+ mutable `uses:` references across `.github/workflows/ci.yml`, `fallow.yml`, `lighthouse.yml`, and `release.yml` with `<owner>/<repo>@<40-char-sha> # <tag>`.
 2. Compute/verify the upstream SHA-256 checksums for `ripgrep 14.1.1` (`.github/workflows/ci.yml:190`), `gitleaks 8.18.4` (`.github/workflows/ci.yml:250`), and `actionlint v1.7.7` (`.github/workflows/ci.yml:564`), download the tarball to a temp file, and verify with `echo "<sha256>  <file>" | sha256sum -c -` before extracting.
 3. Run `actionlint -color` across `.github/workflows/` and confirm every CI workflow job passes on the PR.
 

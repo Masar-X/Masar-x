@@ -726,3 +726,155 @@ describe("lint and Evidence rule", () => {
     );
   });
 });
+
+describe("PR #310 fixup: sub-cards and blocked PR touch isolation", () => {
+  it("supports suffixed sub-card IDs (T-006a, T-006b, T-011a, T-017c) in lint, sort, deriveStatus, and release", () => {
+    withTempTasksDir(
+      {
+        "T-017c-meta.md": makeCardMarkdown({
+          id: "T-017c",
+          priority: "P1",
+          depends_on: "[T-011a]",
+          touches: '["docs/tasks/INVENTORY-meta.md"]',
+        }),
+        "T-006b-ci.md": makeCardMarkdown({
+          id: "T-006b",
+          priority: "P0",
+          depends_on: "[T-006a]",
+          touches: '[".github/workflows/ci.yml"]',
+        }),
+        "T-006a-rls.md": makeCardMarkdown({
+          id: "T-006a",
+          priority: "P0",
+          status: "done",
+          touches: '["supabase/tests/rls-verify.sql"]',
+        }),
+        "T-011a-chat.md": makeCardMarkdown({
+          id: "T-011a",
+          priority: "P1",
+          touches: '["apps/web/src/hooks/useAiChat.ts"]',
+        }),
+      },
+      ({ rootDir, tasksDir }) => {
+        const lint = runLint({ cwd: rootDir, tasksDir, out: () => {}, err: () => {} });
+        assert.equal(lint.exitCode, 0);
+        assert.equal(lint.cardCount, 4);
+
+        const { cards } = loadTaskCards(tasksDir);
+        const sorted = [...cards].sort(compareCards);
+        assert.deepEqual(
+          sorted.map((c) => c.id),
+          ["T-006a", "T-006b", "T-011a", "T-017c"]
+        );
+
+        const cardsById = new Map(cards.map((c) => [c.id, c]));
+        const remoteBranches = parseLsRemoteBranches("111\trefs/heads/task/T-011a\n");
+        const openPrsByTaskId = parseOpenPrs(
+          JSON.stringify([
+            {
+              headRefName: "task/T-006b",
+              number: 201,
+              url: "https://github.com/Masar-X/Masar-x/pull/201",
+              labels: [],
+            },
+          ])
+        );
+        const state = { cardsById, remoteBranches, openPrsByTaskId };
+        assert.equal(deriveCardStatus(cardsById.get("T-006a"), state), "done");
+        assert.equal(deriveCardStatus(cardsById.get("T-006b"), state), "review");
+        assert.equal(deriveCardStatus(cardsById.get("T-011a"), state), "doing");
+        assert.equal(deriveCardStatus(cardsById.get("T-017c"), state), "waiting-deps");
+
+        const deletedCalls = [];
+        const rel = runRelease(["T-017c"], {
+          now: () => Date.parse("2026-11-24T12:00:00Z"),
+          exec: (cmd, args) => {
+            if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+            if (cmd === "git" && args[0] === "ls-remote") return "abc\trefs/heads/task/T-017c\n";
+            if (cmd === "gh" && args[0] === "pr") return "[]";
+            if (cmd === "gh" && args[0] === "api" && args[1]?.includes("/commits/")) {
+              return "2026-11-22T00:00:00Z\n";
+            }
+            if (cmd === "gh" && args[0] === "api" && args[1] === "-X") {
+              deletedCalls.push(args.at(-1));
+              return "";
+            }
+            throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
+          },
+          out: () => {},
+          err: () => {},
+        });
+        assert.equal(rel.exitCode, 0);
+        assert.deepEqual(deletedCalls, ["repos/Masar-X/Masar-x/git/refs/heads/task/T-017c"]);
+      }
+    );
+  });
+
+  it("blocks overlapping touches against blocked open PRs without counting blocked toward WIP limit", () => {
+    withTempTasksDir(
+      {
+        "T-001.md": makeCardMarkdown({ id: "T-001", priority: "P0", touches: '["apps/web/a.ts"]' }),
+        "T-002.md": makeCardMarkdown({ id: "T-002", priority: "P0", touches: '["apps/web/b.ts"]' }),
+        "T-003.md": makeCardMarkdown({
+          id: "T-003",
+          priority: "P0",
+          owner_action: true,
+          touches: '[".github/workflows/**"]',
+        }),
+        "T-004.md": makeCardMarkdown({
+          id: "T-004",
+          priority: "P0",
+          touches: '[".github/workflows/ci.yml"]',
+        }),
+        "T-005.md": makeCardMarkdown({
+          id: "T-005",
+          priority: "P1",
+          touches: '["packages/shared/**"]',
+        }),
+      },
+      ({ tasksDir }) => {
+        const { cards } = loadTaskCards(tasksDir);
+        const gitState = {
+          remoteBranches: parseLsRemoteBranches(
+            [
+              "111\trefs/heads/task/T-001",
+              "222\trefs/heads/task/T-002",
+              "333\trefs/heads/task/T-003",
+            ].join("\n")
+          ),
+          openPrsByTaskId: parseOpenPrs(
+            JSON.stringify([
+              {
+                headRefName: "task/T-002",
+                number: 10,
+                url: "https://github.com/Masar-X/Masar-x/pull/10",
+                labels: [],
+              },
+              {
+                headRefName: "task/T-003",
+                number: 11,
+                url: "https://github.com/Masar-X/Masar-x/pull/11",
+                labels: [{ name: "blocked" }, { name: "owner-action" }],
+              },
+            ])
+          ),
+        };
+
+        const selection = selectNextCandidates(cards, gitState);
+        assert.equal(selection.ok, true);
+        // T-001 (doing) + T-002 (review) = 2; T-003 (blocked) does NOT burn a WIP slot!
+        assert.equal(selection.wipCount, 2);
+        // T-004 overlaps T-003 (blocked), so it must be skipped and T-005 selected instead.
+        assert.deepEqual(
+          selection.candidates.map((c) => c.id),
+          ["T-005"]
+        );
+        assert.ok(
+          selection.skipped.some(
+            (s) => s.id === "T-004" && /T-003 \(blocked\)/.test(s.reason)
+          )
+        );
+      }
+    );
+  });
+});

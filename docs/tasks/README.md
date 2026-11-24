@@ -20,13 +20,13 @@ Frontmatter `status` may only be `todo` or `done` (set `status: done` only in th
 - **Atomic claim before any work:** always run `pnpm tasks:next` (never pick cards manually).
   - Creates `refs/heads/task/T-XXX` on `origin` via `gh api`; HTTP `422` collision automatically retries the next eligible card.
   - Enforces `wip_limit = 3` across `doing + review` (`--force` is **owner-only**).
-  - Skips cards whose `touches` paths/globs overlap any active `doing` or `review` card.
+  - Skips cards whose `touches` paths/globs overlap any active `doing`, `review`, or `blocked` card (while `wip_limit = 3` counts `doing + review`).
   - Preview without claiming via `pnpm tasks:next --dry-run`.
 
 ## Evidence & `owner_action` Rules
 
 - **Evidence rule:** Acceptance criteria are `- [ ]` items. Check an item `- [x]` **only** when the immediately following line is `evidence: <command and real output, or PR comment link>`. Enforced by `pnpm tasks:lint`.
-- **`owner_action: true` cards** (secrets, GitHub settings): prepare exact commands/instructions in the PR, apply label `owner-action`, and stop for the owner.
+- **`owner_action: true` cards** (secrets, GitHub settings): prepare exact commands/instructions in the PR, apply labels `blocked` and `owner-action`, and do **not** merge until the owner comments `"owner step done"` on the PR.
 
 ## Stale Claims & Validation
 

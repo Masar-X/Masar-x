@@ -1,6 +1,7 @@
 ## Card ID
 
 <!-- `T-XXX` (matching branch `task/T-XXX`) or `N/A` -->
+Closes #<issue> <!-- omit if no tracking issue -->
 
 ## Summary
 

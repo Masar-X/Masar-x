@@ -1,10 +1,9 @@
 ---
 id: T-013
-title: "Enforce single version source across 5 packages and CHANGELOG CI gate"
+title: "Align all 5 packages to 0.7.0 and add CHANGELOG CI gate"
 priority: P1
 status: todo
-depends_on:
-  - T-007
+depends_on: []
 touches:
   - "package.json"
   - "apps/web/package.json"
@@ -12,6 +11,8 @@ touches:
   - "apps/mobile/package.json"
   - "packages/shared/package.json"
   - "apps/mobile/app.json"
+  - "apps/web/src/lib/supabase.ts"
+  - "apps/web/src/lib/supabase/client.ts"
   - "CHANGELOG.md"
   - ".github/workflows/ci.yml"
   - "scripts/check-versions.mjs"
@@ -28,40 +29,39 @@ estimate: 0.5d
   - `apps/desktop/package.json:3` (`desktop`): `0.6.1`
   - `apps/mobile/package.json:3` (`mobile`): `0.7.0` (mirrored in `apps/mobile/app.json:5`: `"version": "0.7.0"`)
   - `packages/shared/package.json:3` (`masarx-shared`): `0.5.6`
-- [VERIFIED] `apps/web/src/lib/supabase.ts:28` and `apps/web/src/lib/supabase/client.ts:19` also hardcode `"0.5.6"` as the fallback for `NEXT_PUBLIC_APP_VERSION`.
-- [VERIFIED] `CHANGELOG.md:9-32` has `## [Unreleased]` at line 9 followed by `## [0.6.0] - 2026-09-23` at line 32; `0.6.1` and `0.7.0` have no section headers in `CHANGELOG.md`.
-- [VERIFIED] `.github/workflows/ci.yml` has a `react/react-dom` version parity check at lines `136-153` inside `workspaces`, but no check for package version alignment or `CHANGELOG.md` entries. `.github/workflows/release.yml:31` requires `apps/desktop/package.json` version to match the `v*` release tag.
-- [INFERRED] Selecting the canonical unified version (`0.7.0` vs `0.6.1`) affects desktop auto-updater (`latest.yml`) and mobile store `expo.version`, so owner confirmation on the target version number is needed before bumping.
+- [VERIFIED] `apps/web/src/lib/supabase.ts:28` and `apps/web/src/lib/supabase/client.ts:19` hardcode `"0.5.6"` as the fallback for `NEXT_PUBLIC_APP_VERSION`.
+- [VERIFIED] `CHANGELOG.md:9-32` has `## [Unreleased]` at line 9 followed by `## [0.6.0] - 2026-09-23` at line 32; `0.6.1` and `0.7.0` have no section headers.
+- [VERIFIED] `.github/workflows/ci.yml:136-153` checks `react`/`react-dom` parity inside `workspaces`, but has no package version parity or `CHANGELOG.md` gate. `.github/workflows/release.yml:31` requires `apps/desktop/package.json` version to match the `v*` release tag.
 
 ## Goal
 
-Establish a single canonical version across all 5 `package.json` files (plus `apps/mobile/app.json`) and add a CI check in `.github/workflows/ci.yml` verifying version parity and that `CHANGELOG.md` stays updated on version bumps or non-trivial PRs.
+Align all 5 `package.json` manifests (plus `apps/mobile/app.json`) to canonical version `0.7.0` (never downgrading a published version), remove hardcoded `"0.5.6"` fallbacks in `apps/web/src/lib/supabase*.ts` by reading `package.json`, and add a CI gate requiring a `CHANGELOG.md` `[Unreleased]` entry for `feat:`/`fix:` PRs touching `apps/` or `packages/` (with a `skip-changelog` label escape hatch).
 
 ## Non-goals
 
 - Do NOT cut a git tag or publish a GitHub Release.
-- Do NOT pin CI actions by SHA here (`T-007` owns workflow SHA pinning and runs first via `depends_on: [T-007]`).
+- Do NOT pin CI actions by SHA here (`T-007` owns SHA pinning; `touches` serializes `.github/workflows/ci.yml`).
 
 ## Steps
 
-1. Confirm target unified version with the owner (e.g., `0.7.0` so no workspace version regresses, or `0.6.1` if mobile `0.7.0` was premature).
-2. Align `version` in `package.json:4`, `apps/web/package.json:4`, `apps/desktop/package.json:3`, `apps/mobile/package.json:3`, `packages/shared/package.json:3`, and `apps/mobile/app.json:5` (and update fallback strings in `apps/web/src/lib/supabase.ts:28` & `client.ts:19` or read from `package.json`/env).
-3. Update `CHANGELOG.md` so the current released/unreleased headings reflect the unified version history cleanly (adding `0.6.1` / aligned version notes).
-4. Add `scripts/check-versions.mjs` (verifies all 5 `package.json` files + `apps/mobile/app.json` share the exact same `version`, and verifies `CHANGELOG.md` contains a heading for that version or `## [Unreleased]` with entries) and wire it into `.github/workflows/ci.yml` (`workspaces` or `docs-lint` job).
-5. Run `node scripts/check-versions.mjs` and `actionlint` (if available) / `pnpm typecheck`.
+1. Set `"version": "0.7.0"` in `package.json:4`, `apps/web/package.json:4`, `apps/desktop/package.json:3`, `apps/mobile/package.json:3`, `packages/shared/package.json:3`, and `apps/mobile/app.json:5`.
+2. Replace hardcoded `"0.5.6"` fallbacks in `apps/web/src/lib/supabase.ts:28` and `apps/web/src/lib/supabase/client.ts:19` by reading `version` from `apps/web/package.json` (or build-time `NEXT_PUBLIC_APP_VERSION` derived from `package.json` in `next.config.mjs`).
+3. Update `CHANGELOG.md` so `## [0.6.1]` / `## [0.7.0]` history and `## [Unreleased]` are accurate and valid per `docs-lint`.
+4. Add `scripts/check-versions.mjs` verifying (a) all 5 `package.json` files + `apps/mobile/app.json` share the exact same `version`, and (b) on PRs whose title/commits indicate `feat:`/`fix:` and whose diff touches `apps/` or `packages/`, `CHANGELOG.md` includes an updated entry under `## [Unreleased]` unless the PR has label `skip-changelog`.
+5. Wire `scripts/check-versions.mjs` into `.github/workflows/ci.yml` (`workspaces` or `docs-lint` job) and verify locally.
 
 ## Acceptance criteria
 
-- [ ] `node scripts/check-versions.mjs` — exits 0 confirming all 5 `package.json` manifests and `apps/mobile/app.json` have identical `version` and `CHANGELOG.md` is valid
-- [ ] `pnpm typecheck && pnpm lint` — exits 0
+- [ ] `node scripts/check-versions.mjs` — exits 0 confirming all 5 `package.json` manifests + `apps/mobile/app.json` are `0.7.0`
+- [ ] `rg -n '"0\.5\.6"' apps/web/src/lib/supabase.ts apps/web/src/lib/supabase/client.ts` — returns 0 matches
+- [ ] `pnpm typecheck && pnpm lint && pnpm --filter web test` — exits 0
 
 ## Evidence
 
 ## Rollback
 
-Revert `scripts/check-versions.mjs`, the CI step in `.github/workflows/ci.yml`, and restore prior per-package `version` fields.
+Revert `scripts/check-versions.mjs`, the CI step in `.github/workflows/ci.yml`, `supabase.ts`/`client.ts`, `CHANGELOG.md`, and restore prior per-package `version` fields.
 
 ## Open questions
 
-- Which unified version should all 5 packages align to (`0.7.0` to avoid downgrading `apps/mobile`, or `0.6.1` to match the latest desktop installer)?
-- Should the `CHANGELOG.md` CI gate require a `CHANGELOG.md` diff on `feat:`/`fix:` PRs, or only enforce that the current `package.json` version exists in `CHANGELOG.md` (or under `## [Unreleased]`)?
+- None
