@@ -47,8 +47,9 @@ const base64ToBytes = (b64: string): Uint8Array => {
  * (dependency-free Web Crypto equivalent of standardwebhooks@1.0.0.verify):
  * strip the optional `v1,whsec_` prefix from the dashboard secret, HMAC-SHA256
  * over `${webhook-id}.${webhook-timestamp}.${rawBody}`, accept any `v1,`
- * signature listed in `webhook-signature`, and reject replays outside the
- * 5-minute timestamp tolerance.
+ * signature listed in `webhook-signature` (each entry guarded independently —
+ * GoTrue joins several with ", "), and reject replays outside the 5-minute
+ * timestamp tolerance.
  */
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 const WHSEC_PREFIX = 'v1,whsec_';
@@ -80,12 +81,19 @@ const verifyStandardWebhook = async (
       ['verify'],
     );
     const signedContent = new TextEncoder().encode(`${id}.${timestampHeader}.${rawBody}`);
-    for (const part of signatureHeader.split(' ').filter(Boolean)) {
-      if (!part.startsWith('v1,')) continue;
-      const sigB64 = part.slice(3).replace(/-/g, '+').replace(/_/g, '/');
-      const sigPadded = sigB64.padEnd(sigB64.length + ((4 - (sigB64.length % 4)) % 4), '=');
-      const ok = await crypto.subtle.verify('HMAC', key, base64ToBytes(sigPadded), signedContent);
-      if (ok) return true;
+    for (const part of signatureHeader.split(/\s+/).filter(Boolean)) {
+      // GoTrue joins several `v1,` entries with ", " (hookshttp.go); a
+      // whitespace split leaves the separator comma at the end of an entry.
+      const entry = part.replace(/,+$/, '');
+      if (!entry.startsWith('v1,')) continue;
+      try {
+        const sigB64 = entry.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+        const sigPadded = sigB64.padEnd(sigB64.length + ((4 - (sigB64.length % 4)) % 4), '=');
+        const ok = await crypto.subtle.verify('HMAC', key, base64ToBytes(sigPadded), signedContent);
+        if (ok) return true;
+      } catch {
+        // Malformed entry: skip it, keep verifying the remaining signatures.
+      }
     }
     return false;
   } catch {

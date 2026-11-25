@@ -96,31 +96,6 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function encodeBase64UrlJson(obj: unknown): string {
-  return bytesToBase64Url(new TextEncoder().encode(JSON.stringify(obj)));
-}
-
-async function signHookJwt(
-  secretB64: string,
-  payload: Record<string, unknown> = { sub: "gotrue", role: "supabase_auth_admin" },
-): Promise<string> {
-  const headerB64 = encodeBase64UrlJson({ alg: "HS256", typ: "JWT" });
-  const payloadB64 = encodeBase64UrlJson(payload);
-  const signingInput = `${headerB64}.${payloadB64}`;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    base64ToBytes(secretB64).buffer as ArrayBuffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(signingInput),
-  );
-  return `${signingInput}.${bytesToBase64Url(new Uint8Array(sig))}`;
-}
 function stripWhsecPrefix(secret: string): string {
   return secret.startsWith("v1,whsec_") ? secret.slice("v1,whsec_".length) : secret;
 }
@@ -182,12 +157,9 @@ async function withEnv(
 
 function makeReq(
   body: unknown,
-  opts: { authorization?: string; method?: string } = {},
+  opts: { method?: string } = {},
 ): Request {
   const headers = new Headers({ "content-type": "application/json" });
-  if (opts.authorization !== undefined) {
-    headers.set("authorization", opts.authorization);
-  }
   return new Request("https://functions.local/auth-hook-email", {
     method: opts.method ?? "POST",
     headers,
@@ -355,6 +327,39 @@ Deno.test("handler: invalid Standard Webhooks signature (wrong secret / tampered
       );
       assert(resNonV1.status === 401, `non-v1 scheme: expected 401, got ${resNonV1.status}`);
       assert(brevoCalls.length === 0, "no Brevo email sent on invalid signatures");
+    },
+  );
+});
+
+Deno.test("handler: comma-space multi-signature header with a malformed entry still accepts the valid one -> 200", async () => {
+  await withEnv(
+    { SEND_EMAIL_HOOK_SECRET: TEST_HOOK_SECRET_B64, ENVIRONMENT: undefined },
+    async () => {
+      setScenario(baseScenario());
+      stubFetch();
+      const payload = validPayload();
+      const rawBody = JSON.stringify(payload);
+      const headers = await signStandardWebhook(TEST_HOOK_SECRET_B64, rawBody);
+      const reqHeaders = new Headers({ "content-type": "application/json" });
+      reqHeaders.set("webhook-id", headers["webhook-id"]);
+      reqHeaders.set("webhook-timestamp", headers["webhook-timestamp"]);
+      // GoTrue joins multiple `v1,` entries with ", " (hookshttp.go); the
+      // malformed first entry must not abort verification of the valid one.
+      reqHeaders.set("webhook-signature", `v1,not-base64!!, ${headers["webhook-signature"]}`);
+      const res = await handleAuthHookEmail(
+        new Request("https://functions.local/auth-hook-email", {
+          method: "POST",
+          headers: reqHeaders,
+          body: rawBody,
+        }),
+      );
+      const body = await res.json() as { success?: boolean; error?: string };
+      assert(
+        res.status === 200,
+        `expected 200 (valid entry after a malformed one), got ${res.status}: ${JSON.stringify(body)}`,
+      );
+      assert(body.success === true, `expected success: true, got ${JSON.stringify(body)}`);
+      assert(brevoCalls.length === 1, "exactly one Brevo email sent");
     },
   );
 });
