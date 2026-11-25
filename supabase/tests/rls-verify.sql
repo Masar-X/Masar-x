@@ -7,8 +7,8 @@
 --   Section 1  Every client-accessible table in schema `public` has
 --              Row Level Security ENABLED. Fails loudly (RAISE EXCEPTION)
 --              naming any offender.
---              1a. Static inventory of all 19 tables created by the active
---                  migration chain 001..008 (supabase/migrations/).
+--              1a. Static inventory of the 19 core tables created by the
+--                  baseline migration (supabase/migrations/20261031000000_baseline.sql).
 --              1b. Dynamic sweep of ALL base tables in `public`, so any
 --                  future migration that forgets RLS fails this harness.
 --              1c. User-data views must be security_invoker views.
@@ -19,27 +19,22 @@
 --              transactions that always ROLL BACK.
 --
 -- WHERE THE TABLE LIST COMES FROM
---   supabase/migrations/002_core_identity.sql        profiles, admins
---   supabase/migrations/003_academic_structure.sql   academic_levels, departments, subjects, platform_settings
---   supabase/migrations/004_content_management.sql   courses, quizzes, summaries, enrollments
---   supabase/migrations/005_interactions_and_media.sql videos, files, reviews (+ 2 security_invoker views)
---   supabase/migrations/006_system_and_security.sql  audit_logs, system_logs, rate_limits, password_reset_tokens, notifications
---   supabase/migrations/007_subject_lectures.sql     subject_lectures
---   supabase/migrations/008_jwt_role_sync.sql        (no tables - triggers/functions only)
---
---   `supabase/migrations.old/` is LEGACY and NOT part of the active chain.
---   It mentions quiz_attempts / quiz_answers / news / appeals / chat tables
---   that migrations 001..008 do not create. Section 1b still fails any such
---   table if it exists in a given environment WITHOUT RLS, and Section 3.10
---   conditionally tests quiz_attempts when present.
+--   All of these tables - plus quiz_attempts / quiz_answers / news / appeals /
+--   the chat family and the trw family, 49 public tables in total - are
+--   created by the single baseline migration
+--   supabase/migrations/20261031000000_baseline.sql, which consolidated the
+--   retired numbered chain (archived under supabase/migrations-archive/).
+--   Section 1b still fails any table that exists WITHOUT RLS, and Sections
+--   3.4f / 3.10 assert trw_access_codes and quiz_attempts as baseline tables.
 --
 -- HOW TO RUN
 --   psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql
 --   or paste the whole file into Supabase Dashboard -> SQL Editor.
 --
---   CI runs this against a DISPOSABLE Supabase branch database (never
---   production). Sections 1 and 2 run anywhere; Section 3 additionally
---   needs the seed rows documented in supabase/tests/README.md.
+--   CI (ci.yml db-verify job) runs this against a DISPOSABLE postgres:17
+--   rebuilt from the full migration chain (never production). Sections 1 and
+--   2 run anywhere; Section 3 additionally needs the seed rows documented in
+--   supabase/tests/README.md.
 --
 -- PASS / FAIL
 --   PASS = script completes with NOTICE lines per section and exit code 0.
@@ -84,23 +79,23 @@ END
 $preflight$;
 
 -- ----------------------------------------------------------------------------
--- Section 1a: static inventory - every table from migrations 002..008 must
+-- Section 1a: static inventory - every core baseline table must
 -- exist in schema public AND have relrowsecurity = true.
 -- ----------------------------------------------------------------------------
 DO $rls_static$
 DECLARE
   expected text[] := ARRAY[
-    -- 002_core_identity
+    -- core identity
     'profiles', 'admins',
-    -- 003_academic_structure
+    -- academic structure
     'academic_levels', 'departments', 'subjects', 'platform_settings',
-    -- 004_content_management
+    -- content management
     'courses', 'quizzes', 'summaries', 'enrollments',
-    -- 005_interactions_and_media
+    -- interactions and media
     'videos', 'files', 'reviews',
-    -- 006_system_and_security
+    -- system and security
     'audit_logs', 'system_logs', 'rate_limits', 'password_reset_tokens', 'notifications',
-    -- 007_subject_lectures
+    -- subject lectures
     'subject_lectures'
   ];
   t         text;
@@ -175,8 +170,8 @@ END
 $rls_sweep$;
 
 -- ----------------------------------------------------------------------------
--- Section 1c: user-data views must be security_invoker (migration 005
--- declared review_details and lectures_with_ratings WITH (security_invoker)).
+-- Section 1c: user-data views must be security_invoker (the baseline
+-- declares review_details and lectures_with_ratings WITH (security_invoker)).
 -- An owner-rights view would silently bypass the base tables RLS.
 -- ----------------------------------------------------------------------------
 DO $view_invoker$
@@ -362,7 +357,8 @@ BEGIN;
 
   -- 3.4 enrollments ---------------------------------------------------------
   -- Students see ONLY their own rows; they self-apply with status='pending'
-  -- (migration 018) and can re-apply after rejection; activation is
+  -- ("Students can create enrollments") and can re-apply after rejection
+  -- ("Students can reapply after rejection"); activation is
   -- instructor/admin-only.
   DO $t34a$
   DECLARE
@@ -385,8 +381,8 @@ BEGIN;
   $t34a$;
 
   -- 3.4b enrollments: students CAN self-apply with status='pending'
-  -- (migration 018; the policy existed on the live lineage but was missing
-  -- from the numbered chain). Clear any residue, insert, expect success.
+  -- (baseline policy "Students can create enrollments"). Clear any residue,
+  -- insert, expect success.
   DO $t34b$
   BEGIN
     DELETE FROM public.enrollments
@@ -419,9 +415,10 @@ BEGIN;
   END
   $t34c$;
 
-  -- 3.4d reapply path (migration 018): a student may revive their own
-  -- rejected application back to 'pending', but nothing else. Seed the
-  -- rejected state as service_role, then re-apply as the student.
+  -- 3.4d reapply path (baseline policy "Students can reapply after
+  -- rejection"): a student may revive their own rejected application back to
+  -- 'pending', but nothing else. Seed the rejected state as service_role,
+  -- then re-apply as the student.
   SET LOCAL ROLE service_role;
   UPDATE public.enrollments
      SET status = 'rejected'
@@ -450,7 +447,8 @@ BEGIN;
   END
   $t34d$;
 
-  -- 3.4e show_extra_assets guard (migration 018): a never-entitled user
+  -- 3.4e show_extra_assets guard (baseline trigger
+  -- trg_guard_extra_assets_entitlement): a never-entitled user
   -- cannot self-grant through PostgREST any more; the guard trigger must
   -- reject the write even though the UPDATE policy (auth.uid() = id) allows
   -- the row.
@@ -467,26 +465,20 @@ BEGIN;
   $t34e$;
 
   -- 3.4f access codes must not be enumerable by authenticated users
-  -- (migration 018 dropped trw_access_codes_select_auth). Existence-guarded:
-  -- branches built from the numbered chain alone have no trw tables yet.
+  -- (the baseline defines trw_access_codes with RLS enabled and no
+  -- authenticated SELECT policy - deny-by-default).
   DO $t34f$
   DECLARE
-    v_exists boolean;
-    v_count  int;
+    v_count int;
   BEGIN
-    SELECT EXISTS (
-      SELECT 1 FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name = 'trw_access_codes'
-    ) INTO v_exists;
-    IF v_exists THEN
-      SELECT count(*) INTO v_count FROM public.trw_access_codes;
-      IF v_count <> 0 THEN
-        RAISE EXCEPTION 'RLS VERIFY FAILED: trw_access_codes enumerable by authenticated (%)', v_count;
-      END IF;
-      RAISE NOTICE '3.4f trw_access_codes PASS: not enumerable by authenticated';
-    ELSE
-      RAISE NOTICE '3.4f trw_access_codes SKIP: table absent (active-migration branch)';
+    IF to_regclass('public.trw_access_codes') IS NULL THEN
+      RAISE EXCEPTION 'RLS VERIFY FAILED: trw_access_codes missing (baseline table)';
     END IF;
+    SELECT count(*) INTO v_count FROM public.trw_access_codes;
+    IF v_count <> 0 THEN
+      RAISE EXCEPTION 'RLS VERIFY FAILED: trw_access_codes enumerable by authenticated (%)', v_count;
+    END IF;
+    RAISE NOTICE '3.4f trw_access_codes PASS: not enumerable by authenticated';
   END
   $t34f$;
 
@@ -643,11 +635,9 @@ BEGIN;
   END
   $t39$;
 
-  -- 3.10 quiz_attempts (CONDITIONAL / legacy) -------------------------------
-  -- The active chain (001..008) does NOT create quiz_attempts; it appears
-  -- only in supabase/migrations.old/. If the table exists in this
-  -- environment, verify RLS and the owner-scoped read posture; otherwise
-  -- SKIP loudly.
+  -- 3.10 quiz_attempts (baseline table) --------------------------------------
+  -- quiz_attempts is created by the baseline migration. Verify RLS and the
+  -- owner-scoped read posture.
   DO $t310$
   DECLARE
     tbl oid;
@@ -655,8 +645,7 @@ BEGIN;
   BEGIN
     tbl := to_regclass('public.quiz_attempts');
     IF tbl IS NULL THEN
-      RAISE NOTICE '3.10 quiz_attempts SKIP: not present (not part of migrations 001..008)';
-      RETURN;
+      RAISE EXCEPTION 'RLS VERIFY FAILED: quiz_attempts missing (baseline table)';
     END IF;
 
     IF NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = tbl) THEN
@@ -671,7 +660,7 @@ BEGIN;
       RAISE EXCEPTION 'RLS VERIFY FAILED: quiz_attempts exposed % rows not owned by the caller', n;
     END IF;
 
-    RAISE NOTICE '3.10 quiz_attempts PASS: RLS enabled and rows owner-scoped (legacy table present)';
+    RAISE NOTICE '3.10 quiz_attempts PASS: RLS enabled and rows owner-scoped';
   END
   $t310$;
 
@@ -725,14 +714,38 @@ BEGIN;
   -- conversation its owner owns (composite ownership FK
   -- (conversation_id, user_id) -> conversations (id, user_id) ON DELETE
   -- CASCADE, 20261114132536_zane_conversations_ownership_fk.sql).
+  -- NOTE: the chain defines NO table grants on conversations (a real
+  -- Supabase project covers them with platform-level default privileges,
+  -- which migrations cannot assume). The blocks below detect the grant
+  -- posture via has_table_privilege() and assert the RLS path when granted
+  -- or the deny path (session superuser CRUD) on a vanilla replay.
   DO $t312a$
   DECLARE
-    v_cid uuid;
-    v_rows int;
+    v_cid   uuid;
+    v_rows  int;
+    v_grant boolean;
   BEGIN
-    INSERT INTO public.conversations (user_id, mode, title)
-    VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
-    RETURNING id INTO v_cid;
+    SELECT has_table_privilege('authenticated', 'public.conversations', 'INSERT')
+      INTO v_grant;
+
+    IF v_grant THEN
+      INSERT INTO public.conversations (user_id, mode, title)
+      VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
+      RETURNING id INTO v_cid;
+      RAISE NOTICE '3.12 conversations: authenticated grant present - full CRUD path';
+    ELSE
+      RAISE NOTICE '3.12 conversations: no authenticated grant in the chain - CRUD via the session superuser';
+      SET LOCAL ROLE postgres;  -- back to the session role: bypasses RLS and grants
+      INSERT INTO public.conversations (user_id, mode, title)
+      VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
+      RETURNING id INTO v_cid;
+      SET LOCAL ROLE authenticated;
+      PERFORM set_config(
+        'request.jwt.claims',
+        '{"sub": "00000000-0000-0000-0000-0000000000a1", "role": "authenticated"}',
+        true
+      );
+    END IF;
 
     INSERT INTO public.ai_chat_messages (user_id, role, content, mode, conversation_id)
     VALUES ('00000000-0000-0000-0000-0000000000a1', 'user', 'RLS harness message', 'cs_assistant', v_cid);
@@ -742,29 +755,38 @@ BEGIN;
       RAISE EXCEPTION 'RLS VERIFY FAILED: conversations own message not visible after insert';
     END IF;
 
-    UPDATE public.conversations SET title = 'RLS harness renamed' WHERE id = v_cid;
-    IF (SELECT count(*) FROM public.conversations WHERE id = v_cid AND title = 'RLS harness renamed') <> 1 THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations own update rejected';
-    END IF;
+    IF v_grant THEN
+      UPDATE public.conversations SET title = 'RLS harness renamed' WHERE id = v_cid;
+      IF (SELECT count(*) FROM public.conversations WHERE id = v_cid AND title = 'RLS harness renamed') <> 1 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations own update rejected';
+      END IF;
 
-    DELETE FROM public.conversations WHERE id = v_cid;
-    SELECT count(*) INTO v_rows FROM public.ai_chat_messages WHERE conversation_id = v_cid;
-    IF v_rows <> 0 THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversation delete did not cascade its messages';
-    END IF;
+      DELETE FROM public.conversations WHERE id = v_cid;
+      SELECT count(*) INTO v_rows FROM public.ai_chat_messages WHERE conversation_id = v_cid;
+      IF v_rows <> 0 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversation delete did not cascade its messages';
+      END IF;
 
-    RAISE NOTICE '3.12 conversations PASS: own insert/message-attach/update/delete + FK cascade';
+      RAISE NOTICE '3.12 conversations PASS: own insert/message-attach/update/delete + FK cascade';
+    ELSE
+      RAISE NOTICE '3.12 conversations PASS: own message insert + visibility via ai_chat_messages (conversation-CRUD denial asserted in 3.12b)';
+    END IF;
   END
   $t312a$;
 
   DO $t312b$
   DECLARE
     v_bconv uuid;
-    v_rows int;
+    v_rows  int;
+    v_grant boolean;
   BEGIN
-    -- seed user B's conversation as service_role so the attach test below
-    -- proves the ownership binding (not merely a missing parent row)
-    SET LOCAL ROLE service_role;
+    SELECT has_table_privilege('authenticated', 'public.conversations', 'INSERT')
+      INTO v_grant;
+
+    -- seed user B's conversation with a role that can write it, so the
+    -- attach test below proves the ownership binding (not merely a missing
+    -- parent row)
+    SET LOCAL ROLE postgres;
     BEGIN
       INSERT INTO public.conversations (user_id, mode, title)
       VALUES ('00000000-0000-0000-0000-0000000000a2', 'cs_assistant', 'B conversation')
@@ -776,30 +798,51 @@ BEGIN;
     END;
 
     SET LOCAL ROLE authenticated;
-    -- cross-user SELECT must see nothing
-    SELECT count(*) INTO v_rows
-      FROM public.conversations
-     WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
-    IF v_rows <> 0 THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations cross-user SELECT visible';
-    END IF;
+    PERFORM set_config(
+      'request.jwt.claims',
+      '{"sub": "00000000-0000-0000-0000-0000000000a1", "role": "authenticated"}',
+      true
+    );
 
-    -- cross-user INSERT must be rejected
-    BEGIN
-      INSERT INTO public.conversations (user_id, mode)
-      VALUES ('00000000-0000-0000-0000-0000000000a2', 'cs_assistant');
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user insert';
-    EXCEPTION
-      WHEN insufficient_privilege THEN
-        RAISE NOTICE '3.12 conversations PASS: cross-user insert rejected';
-    END;
+    IF v_grant THEN
+      -- cross-user SELECT must see nothing
+      SELECT count(*) INTO v_rows
+        FROM public.conversations
+       WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
+      IF v_rows <> 0 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations cross-user SELECT visible';
+      END IF;
+      RAISE NOTICE '3.12 conversations PASS: cross-user SELECT invisible';
 
-    -- cross-user UPDATE/DELETE must be a no-op (policy filters the row out)
-    DELETE FROM public.conversations
-     WHERE id = v_bconv
-     RETURNING id INTO v_rows;
-    IF v_rows IS NOT NULL THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user delete';
+      -- cross-user INSERT must be rejected
+      BEGIN
+        INSERT INTO public.conversations (user_id, mode)
+        VALUES ('00000000-0000-0000-0000-0000000000a2', 'cs_assistant');
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user insert';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE '3.12 conversations PASS: cross-user insert rejected';
+      END;
+
+      -- cross-user UPDATE/DELETE must be a no-op (policy filters the row out)
+      DELETE FROM public.conversations
+       WHERE id = v_bconv
+       RETURNING id INTO v_rows;
+      IF v_rows IS NOT NULL THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user delete';
+      END IF;
+    ELSE
+      -- the chain grants nothing on conversations: reads and writes must be
+      -- table-permission denied, which is itself the passing posture here
+      BEGIN
+        SELECT count(*) INTO v_rows
+          FROM public.conversations
+         WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations readable by authenticated without a grant';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE '3.12 conversations PASS: table not exposed to authenticated (no grant in chain)';
+      END;
     END IF;
 
     -- a message may not attach to another user's conversation: RLS on
@@ -812,6 +855,20 @@ BEGIN;
       WHEN foreign_key_violation THEN
         RAISE NOTICE '3.12 messages PASS: cross-user conversation attach rejected by ownership FK';
     END;
+
+    IF NOT v_grant THEN
+      -- no-grant path: verify message-attach + cascade via the session
+      -- superuser (a B-owned message, then delete the conversation)
+      SET LOCAL ROLE postgres;
+      INSERT INTO public.ai_chat_messages (user_id, role, content, mode, conversation_id)
+      VALUES ('00000000-0000-0000-0000-0000000000a2', 'user', 'B harness message', 'cs_assistant', v_bconv);
+      DELETE FROM public.conversations WHERE id = v_bconv;
+      SELECT count(*) INTO v_rows FROM public.ai_chat_messages WHERE conversation_id = v_bconv;
+      IF v_rows <> 0 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversation delete did not cascade its messages';
+      END IF;
+      RAISE NOTICE '3.12 conversations PASS: message-attach + FK cascade verified (session superuser)';
+    END IF;
   END
   $t312b$;
 ROLLBACK;
