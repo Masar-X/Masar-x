@@ -97,7 +97,7 @@ The edge functions need a redeploy to pick up the edge-side changes already merg
 - ai-chat: spec 050 (systemInstruction on both Gemini sites, user-message framing) + spec 055 (context.facultyId contract key + platform-name allowlist).
 - summarize-chat: spec 050 (per-message / sender-name / total input caps + conversation framing).
 
-Verify first: #290 records the ai-chat redeploy as done on 2026-11-21. Close this issue if both functions are current (deploy dates vs the spec merge dates: 050 = 2026-11-16, 055 = 2026-11-21).
+Verify first: #290 (2026-11-22 sweep) records the ai-chat redeploy as done, with no date recorded. Close this issue if both functions are current (deploy dates vs the spec merge dates: 050 = 2026-11-16, 055 = 2026-11-21).
 
 Edge functions are deployed by hand. Folded follow-up from the same 055 row: when roadmap doc 02 lands anu-x, write the ANU-X promptPlatformName strings + one edge id-map entry.
 
