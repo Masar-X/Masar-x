@@ -45,14 +45,14 @@ jobs:
       - name: Checkout
         # Full history: audit needs the PR base SHA for changed-file
         # scoping (auto-changed-since defaults to true).
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Fallow audit
         # v3, pinned to the tag's commit (spec 041 R22 — mutable tag pins are
         # a supply-chain surface; same treatment as lighthouse-ci-action).
-        uses: fallow-rs/fallow@b6a3e048dc882bdf11c8269c73167223b9e32774
+        uses: fallow-rs/fallow@b6a3e048dc882bdf11c8269c73167223b9e32774 # v3.43.2
         with:
           command: audit
           fail-on-issues: false
