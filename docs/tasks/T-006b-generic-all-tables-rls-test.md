@@ -53,7 +53,7 @@ Replace the hand-maintained 19-of-57 table array in `supabase/tests/rls-verify.s
 
 - Sections 1a/1b (the 19-entry array and the unlabeled sweep) replaced by the generic sweep (zero-count guard + offender naming) and the negative self-test; Section 1c untouched.
 - `supabase/tests/README.md`: section rows 1a/1b -> `1` + `1-negative`; sample `NOTICE` output updated with the CI-observed count (50).
-- No local Postgres on this machine (no docker, no psql); the harness evidence is the CI `db-verify` job: run 45697741737 (job 139499462153) on this head -> `PREFLIGHT PASS`, `SECTION 1 PASS: all 50 public tables verified with RLS enabled`, `SECTION 1-negative PASS`.
+- No local Postgres on this machine (no docker, no psql); the harness evidence is the CI `db-verify` job: run 45697741737 (job 139499462153) on 0320bc8 and run 45707961813 (job 139534682084) on 41f97ae - identical lines: `PREFLIGHT PASS`, `SECTION 1 PASS: all 50 public tables verified with RLS enabled`, `SECTION 1-negative PASS`.
 
 ## Rollback
 
