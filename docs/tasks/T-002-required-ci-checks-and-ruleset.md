@@ -49,7 +49,6 @@ Ruleset `20299668` requires `test`, `workspaces`, `mobile`, `deno-check`, `deps-
   evidence: `gh api repos/Masar-X/Masar-x/rulesets/20299668` (admin, 2026-11-25) -> required contexts `Vercel`, `next build`, `ESLint`, `ai-endpoint-grep`, `gitleaks-artifacts`, `e2e`, `workflow-lint`; `strict_required_status_checks_policy: false`; rule types `deletion`, `required_linear_history`, `pull_request`, `required_status_checks`, `required_signatures`, `non_fast_forward`; `bypass_actors: []`; `current_user_can_bypass: never`.
 - [x] #312 carries the `needs: owner` label and the runbook.
   evidence: `gh issue view 312 --json state,labels,comments` -> `state: OPEN labels: needs: owner, priority: P0, area: ci comments: 1`; the comment is the runbook (fresh `GET`, diff check, `PUT`).
-- [ ] `gh api repos/Masar-X/Masar-x/rulesets/20299668 --jq '.rules[] | select(.type=="required_status_checks") | .parameters'` shows `strict_required_status_checks_policy: true` and 13 contexts.
 - [ ] `bash .github/scripts/check-doc-links.sh` exits 0 and CI `workflow-lint` passes. (Local half done, see Evidence; the CI half is ticked once the run on this PR's head reports.)
 
 ## Evidence
@@ -58,7 +57,7 @@ Ruleset `20299668` requires `test`, `workspaces`, `mobile`, `deno-check`, `deps-
 - `node scripts/tasks.mjs lint` -> `tasks:lint OK (24 card(s) checked)`, exit 0.
 - `gh run view 45643236102` (`4c664fd`, 2026-11-25T15:16:09Z): all 13 jobs `success`, before `db-verify` was added.
 - `e2e` history: `gh run view <id> --json jobs` for each of the 10 runs listed under Context; `45086452278` and `45086856930` are whole-run failures on the `test` job with `e2e` `success`.
-- Not run here: the ruleset `PUT`. It needs owner admin credentials and is the owner step in #312.
+- Not run here: the ruleset `PUT` and its verification (`strict_required_status_checks_policy: true` with 13 contexts). They need owner admin credentials and are the last checklist items in #312.
 
 ## Rollback
 
