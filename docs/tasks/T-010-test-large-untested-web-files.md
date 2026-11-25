@@ -72,7 +72,7 @@ Establish behavioral characterization tests for the highest-risk untested large 
 
 Scope (step 3): the six step-1 priorities are covered - `profile/page.tsx` (15 tests), `subjects/[subject]/page.tsx` (12), `courses/[courseId]/page.tsx` (11), `NewsClient.tsx` (11), `edit-summary/page.tsx` (11), `AppNav.tsx` (12) - auth gating, loading/error states and the primary mutations run against the real page code with only children/hooks/transport mocked (`@/test/mocks/next-intl` + `createSupabaseMock` conventions). The remaining 7 files from the audit (`quiz-attempts/page.tsx`, `admin-dashboard/page.tsx`, `AdminAnalyticsPage.tsx`, `ai-assistant/page.tsx`, `summaries/[summaryId]/page.tsx`, `AdminOverviewTab.tsx`, `Sidebar.tsx`) are deferred to follow-up sub-cards per step 3.
 
-CI (PR #345, head 1577ce0): all checks pass - `test` (1m26s), `next build`, `docs-lint`, `workspaces`, `deno-check`, `db-verify`, `translations`, `deps-audit (critical gate)`, `gitleaks-artifacts`, `ai-endpoint-grep`, `workflow-lint`, `fallow-audit (report-only)`, `mobile`, Vercel deploy.
+CI (PR #345, head 93a7656, run 45722701654): all checks pass - `test` (1m26s), `next build`, `docs-lint`, `workspaces`, `deno-check`, `db-verify`, `translations`, `deps-audit (critical gate)`, `gitleaks-artifacts`, `ai-endpoint-grep`, `workflow-lint`, `fallow-audit (report-only)`, `mobile`, Vercel deploy.
 
 ## Rollback
 
