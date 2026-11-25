@@ -169,13 +169,18 @@ The harness needs a PostgreSQL 17 built from this repo's migration chain
 `auth`-schema prelude first, plus the `extensions` schema — the
 audit-retention migration installs `pg_cron` into it, so a vanilla server
 needs the `postgresql-17-cron` package loaded via
-`shared_preload_libraries=pg_cron` (exactly what the CI `db-verify` job
-does) — and the RLS seed above for the `rls-verify.sql` Section 3 blocks:
+`shared_preload_libraries=pg_cron`, and pg_cron must be pre-installed
+(`create extension pg_cron;` — the vanilla package pins pg_catalog, while
+the audit-retention migration says `WITH SCHEMA extensions`; pre-installing
+makes that migration's `IF NOT EXISTS` skip the schema clause, exactly what
+the CI `db-verify` job does) — and the RLS seed above for the
+`rls-verify.sql` Section 3 blocks:
 
 ```bash
 psql "$DB_URL" -v ON_ERROR_STOP=1 \
   -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;" \
-  -c "create schema if not exists extensions;"
+  -c "create schema if not exists extensions;" \
+  -c "create extension pg_cron;"
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/prelude.sql
 for f in supabase/migrations/*.sql; do psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"; done
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql   # seed first (Sections 1-2 run without it)

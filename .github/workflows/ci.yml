@@ -607,10 +607,12 @@ jobs:
   # manual procedure documented in supabase/tests/README.md ("Running it"):
   # roles -> extensions schema -> prelude -> migrations -> seed -> harnesses.
   # The container installs postgresql-17-cron because the audit-retention
-  # migration (20261108110001) runs CREATE EXTENSION pg_cron unguarded and
-  # the official postgres:17 image does not ship it; a service container
+  # migration (20261108110001) runs CREATE EXTENSION pg_cron and the
+  # official postgres:17 image does not ship it; a service container
   # cannot run that install before postgres starts, hence a step-managed
-  # container instead of a services: block.
+  # container instead of a services: block. pg_cron is pre-installed (see
+  # the roles step) so the migration's IF NOT EXISTS skips the vanilla
+  # pg_catalog schema pin cleanly.
   # ---------------------------------------------------------------------
   db-verify:
     name: db-verify
@@ -645,11 +647,19 @@ jobs:
           done
           echo "postgres is ready"
 
-      - name: Create Supabase roles + extensions schema
+      # pg_cron is pre-installed into pg_catalog (where the PGDG package pins
+      # it) BEFORE the replay: the audit-retention migration then hits its
+      # CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions as a
+      # no-op, because IF NOT EXISTS skips the schema clause for an existing
+      # extension. Without the pre-install, vanilla pg_cron errors with
+      # "must be installed in schema pg_catalog" (Supabase ships a relocated
+      # build; vanilla does not).
+      - name: Create Supabase roles + extensions schema + pre-install pg_cron
         run: |
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;" \
-            -c "create schema if not exists extensions;"
+            -c "create schema if not exists extensions;" \
+            -c "create extension pg_cron;"
 
       - name: Apply auth-schema prelude
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/prelude.sql
