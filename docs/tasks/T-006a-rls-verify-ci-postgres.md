@@ -76,6 +76,8 @@ RG_EXIT=0
 - AC-2: `actionlint -color` (v1.7.7) with shellcheck v0.10.0 over the worktree -> zero findings, exit 0. First CI contact: `workflow-lint` failed with shellcheck SC2034 on the readiness-wait loop (fixed in commit 2); the full local pair was re-run green before pushing the fix, and CI `workflow-lint` then passed (run `45649929170`, 5s).
 - AC-3: pending the CI `db-verify` run on this PR (no local PG/docker on this host - not verified locally).
 
+- CI follow-up (db-verify run 45649929170 -> 45650554603, commit e2b1acd): all 18 migrations replay cleanly - the pg_cron pre-install flips the audit-retention line to `NOTICE: extension "pg_cron" already exists, skipping`; the remaining failure was `rls-verify.sql:747 ERROR: permission denied for table conversations` - the spec-049 table ships without table grants (Supabase grants blanket table privileges at bootstrap via default privileges; `bypassrls` does not cover table grants). Fix commit adds `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES/SEQUENCES TO anon, authenticated, service_role` to the roles step (ci.yml) and the README manual snippet - mirroring the Supabase bootstrap the RLS policies assume.
+
 ## Rollback
 
 Revert the changes to `supabase/tests/rls-verify.sql`, `supabase/tests/README.md`, and `.github/workflows/ci.yml` via `git revert <commit>`.

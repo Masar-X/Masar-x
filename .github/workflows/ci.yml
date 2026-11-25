@@ -659,7 +659,8 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;" \
             -c "create schema if not exists extensions;" \
-            -c "create extension pg_cron;"
+            -c "create extension pg_cron;" \
+            -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role; alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;;"
 
       - name: Apply auth-schema prelude
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/prelude.sql

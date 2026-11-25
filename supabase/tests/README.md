@@ -180,7 +180,8 @@ the CI `db-verify` job does) — and the RLS seed above for the
 psql "$DB_URL" -v ON_ERROR_STOP=1 \
   -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;" \
   -c "create schema if not exists extensions;" \
-  -c "create extension pg_cron;"
+  -c "create extension pg_cron;" \
+    -c "alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role; alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;;"
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/prelude.sql
 for f in supabase/migrations/*.sql; do psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"; done
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql   # seed first (Sections 1-2 run without it)
