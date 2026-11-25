@@ -4,13 +4,14 @@
 -- ============================================================================
 --
 -- WHAT THIS VERIFIES
---   Section 1  Every client-accessible table in schema `public` has
---              Row Level Security ENABLED. Fails loudly (RAISE EXCEPTION)
---              naming any offender.
---              1a. Static inventory of the 19 core tables created by the
---                  baseline migration (supabase/migrations/20261031000000_baseline.sql).
---              1b. Dynamic sweep of ALL base tables in `public`, so any
---                  future migration that forgets RLS fails this harness.
+--   Section 1  EVERY base/partitioned table in schema `public` has Row
+--              Level Security ENABLED. Generic pg_catalog sweep - no
+--              hand-maintained table list - so any migration that forgets
+--              RLS fails this harness. Fails loudly (RAISE EXCEPTION)
+--              naming any offender; a schema with zero tables also fails.
+--              A negative self-test creates a deliberately un-RLS'd table
+--              inside a transaction that always ROLLBACKs and fails if the
+--              sweep does not flag it.
 --              1c. User-data views must be security_invoker views.
 --   Section 2  Policy inventory (tablename, policyname, cmd, roles),
 --              ordered - documentation output.
@@ -18,14 +19,15 @@
 --              executed as `authenticated` / `service_role` inside
 --              transactions that always ROLL BACK.
 --
--- WHERE THE TABLE LIST COMES FROM
---   All of these tables - plus quiz_attempts / quiz_answers / news / appeals /
---   the chat family and the trw family, 49 public tables in total - are
+-- WHERE THE TABLES COME FROM
+--   Section 1 discovers every table dynamically from pg_catalog; nothing is
+--   listed by hand. The 49+ baseline public tables (incl. quiz_attempts /
+--   quiz_answers / news / appeals / the chat family / the trw family) are
 --   created by the single baseline migration
 --   supabase/migrations/20261031000000_baseline.sql, which consolidated the
 --   retired numbered chain (archived under supabase/migrations-archive/).
---   Section 1b still fails any table that exists WITHOUT RLS, and Sections
---   3.4f / 3.10 assert trw_access_codes and quiz_attempts as baseline tables.
+--   Sections 3.4f / 3.10 additionally assert trw_access_codes and
+--   quiz_attempts as baseline tables.
 --
 -- HOW TO RUN
 --   psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql
@@ -79,84 +81,40 @@ END
 $preflight$;
 
 -- ----------------------------------------------------------------------------
--- Section 1a: static inventory - every core baseline table must
--- exist in schema public AND have relrowsecurity = true.
+-- Section 1: generic sweep - EVERY base/partitioned table in schema public
+-- must have row level security enabled. No hand-maintained list: tables are
+-- discovered from pg_catalog, the count itself is asserted (a schema with
+-- zero tables would make the sweep verify nothing), and offenders are named
+-- in the exception.
 -- ----------------------------------------------------------------------------
-DO $rls_static$
+DO $rls_all_tables$
 DECLARE
-  expected text[] := ARRAY[
-    -- core identity
-    'profiles', 'admins',
-    -- academic structure
-    'academic_levels', 'departments', 'subjects', 'platform_settings',
-    -- content management
-    'courses', 'quizzes', 'summaries', 'enrollments',
-    -- interactions and media
-    'videos', 'files', 'reviews',
-    -- system and security
-    'audit_logs', 'system_logs', 'rate_limits', 'password_reset_tokens', 'notifications',
-    -- subject lectures
-    'subject_lectures'
-  ];
-  t         text;
-  missing   text := '';
-  no_rls    text := '';
-BEGIN
-  FOREACH t IN ARRAY expected LOOP
-    IF NOT EXISTS (
-      SELECT 1
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public'
-         AND c.relname = t
-         AND c.relkind IN ('r', 'p')   -- ordinary + partitioned tables
-    ) THEN
-      missing := missing || t || ' ';
-    ELSIF NOT EXISTS (
-      SELECT 1
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public'
-         AND c.relname = t
-         AND c.relkind IN ('r', 'p')
-         AND c.relrowsecurity = true
-    ) THEN
-      no_rls := no_rls || t || ' ';
-    END IF;
-  END LOOP;
-
-  IF missing <> '' THEN
-    RAISE EXCEPTION 'RLS VERIFY FAILED: expected tables missing from schema public: %', missing;
-  END IF;
-
-  IF no_rls <> '' THEN
-    RAISE EXCEPTION 'RLS VERIFY FAILED: tables without row level security: %', no_rls;
-  END IF;
-
-  RAISE NOTICE 'SECTION 1a PASS: all % expected tables exist with RLS enabled', array_length(expected, 1);
-END
-$rls_static$;
-
--- ----------------------------------------------------------------------------
--- Section 1b: dynamic sweep - ANY base table in schema public without RLS
--- fails, including tables from legacy or future migrations.
--- ----------------------------------------------------------------------------
-DO $rls_sweep$
-DECLARE
-  t         record;
+  total     int;
   offenders text := '';
+  t         record;
 BEGIN
+  SELECT count(*)
+    INTO total
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public'
+     AND c.relkind IN ('r', 'p')   -- ordinary + partitioned tables
+     AND c.relisshared = false;
+
+  IF total = 0 THEN
+    RAISE EXCEPTION 'RLS VERIFY FAILED: no base tables found in schema public (the sweep would verify nothing)';
+  END IF;
+
   FOR t IN
-    SELECT c.relname, c.relrowsecurity
+    SELECT c.relname
       FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = 'public'
        AND c.relkind IN ('r', 'p')
        AND c.relisshared = false
+       AND c.relrowsecurity = false
   LOOP
-    IF NOT t.relrowsecurity THEN
-      offenders := offenders || t.relname || ' ';
-    END IF;
+    offenders := offenders || t.relname || ' ';
   END LOOP;
 
   IF offenders <> '' THEN
@@ -165,9 +123,45 @@ BEGIN
       offenders;
   END IF;
 
-  RAISE NOTICE 'SECTION 1b PASS: no base table in schema public lacks RLS';
+  RAISE NOTICE 'SECTION 1 PASS: all % public tables verified with RLS enabled', total;
 END
-$rls_sweep$;
+$rls_all_tables$;
+
+-- ----------------------------------------------------------------------------
+-- Section 1 negative self-test: the sweep must actually catch a public
+-- table without RLS. A deliberately un-RLS'd table is created inside a
+-- transaction that always ROLLBACKs; if the sweep does NOT flag it, the
+-- harness itself is broken and the run fails loudly.
+-- ----------------------------------------------------------------------------
+BEGIN;
+CREATE TABLE public.rls_verify_selftest_no_rls (id integer);
+DO $rls_negative$
+DECLARE
+  offenders text := '';
+  t         record;
+BEGIN
+  FOR t IN
+    SELECT c.relname
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relkind IN ('r', 'p')
+       AND c.relisshared = false
+       AND c.relrowsecurity = false
+  LOOP
+    offenders := offenders || t.relname || ' ';
+  END LOOP;
+
+  IF offenders NOT LIKE '%rls_verify_selftest_no_rls%' THEN
+    RAISE EXCEPTION
+      'RLS VERIFY FAILED (negative self-test): the RLS sweep did not flag the deliberately un-RLS''d table rls_verify_selftest_no_rls (offenders: "%") - the assertion is broken',
+      offenders;
+  END IF;
+
+  RAISE NOTICE 'SECTION 1-negative PASS: the sweep flags a public table without RLS as expected';
+END
+$rls_negative$;
+ROLLBACK;
 
 -- ----------------------------------------------------------------------------
 -- Section 1c: user-data views must be security_invoker (the baseline
