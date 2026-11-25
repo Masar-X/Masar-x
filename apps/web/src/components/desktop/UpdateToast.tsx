@@ -9,6 +9,12 @@
  * nothing in the renderer consumed them, so updates were silent background
  * downloads with a surprise restart-on-quit (audit 2026-09-08 R9).
  *
+ * T-005: installers ship unsigned, so the main process pins
+ * autoDownload/autoInstallOnAppQuit to false
+ * (apps/desktop/src/main/updater.ts) and nothing is downloaded in the
+ * background. This toast links to the manual GitHub Releases page instead
+ * of driving installAndRestart().
+ *
  * Renders only inside the Electron shell; every bridge access is
  * null-checked so an old/missing preload degrades to a no-op.
  * Strings come from the `desktopUpdates` namespace
@@ -26,7 +32,6 @@ export function UpdateToast(): React.JSX.Element | null {
   const isDesktop = useIsDesktopRuntime();
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
   const [errorVisible, setErrorVisible] = useState(false);
-  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     if (!isDesktop) return undefined;
@@ -47,14 +52,6 @@ export function UpdateToast(): React.JSX.Element | null {
   }, [isDesktop]);
 
   if (!isDesktop) return null;
-
-  const handleInstall = (): void => {
-    if (!availableVersion || installing) return;
-    setInstalling(true);
-    getDesktopBridge()
-      ?.updates?.installAndRestart()
-      .catch(() => setInstalling(false));
-  };
 
   const handleLater = (): void => {
     if (!availableVersion) return;
@@ -98,14 +95,14 @@ export function UpdateToast(): React.JSX.Element | null {
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={handleInstall}
-          disabled={installing}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        <a
+          href="https://github.com/Masar-X/Masar-x/releases/latest"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {t("install")}
-        </button>
+          {t("downloadFromReleases")}
+        </a>
         <button
           type="button"
           onClick={handleLater}

@@ -142,7 +142,10 @@ export class Updater {
 
   /**
    * Check for updates on app startup. Idempotent within the rate-limit
-   * window. Triggers the auto-download flow if an update is found.
+   * window. Broadcasts update-available when an update is found but does
+   * NOT auto-download it (T-005): installers ship unsigned, so the
+   * renderer offers the manual GitHub Releases link instead
+   * (apps/web/src/components/desktop/UpdateToast.tsx).
    */
   async checkOnStartup(): Promise<UpdateAvailableInfo | null> {
     if (!isAutoUpdateEnabled()) {
@@ -150,11 +153,15 @@ export class Updater {
       return null;
     }
 
-    // Enable auto-download + install-on-quit before checking. These are
-    // the defaults per electron-updater docs; we set them explicitly so
-    // the behavior is in one place.
-    this.au.autoDownload = true;
-    this.au.autoInstallOnAppQuit = true;
+    // T-005 — Windows installers ship unsigned (the Authenticode block in
+    // apps/desktop/electron-builder.yml is commented out, including
+    // verifyUpdateCodeSignature: true), so silently downloading and
+    // installing-on-quit an unsigned binary is not acceptable. Pin both
+    // flags to false: the update-available broadcast still fires and the
+    // renderer (UpdateToast.tsx) links to the manual GitHub Releases page.
+    // Flip both back to true ONLY once signed builds are enabled.
+    this.au.autoDownload = false;
+    this.au.autoInstallOnAppQuit = false;
 
     // Record which binary is running now BEFORE anything else so rollback
     // and restart loops always converge (the marker must describe the
