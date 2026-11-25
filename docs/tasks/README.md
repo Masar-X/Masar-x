@@ -8,8 +8,8 @@ Frontmatter `status` may only be `todo` or `done` (set `status: done` only in th
 
 - `todo` — no remote branch `task/T-XXX` and all `depends_on` are `done` (`waiting-deps` when blocked by unmet `depends_on`)
 - `doing` — remote branch `refs/heads/task/T-XXX` exists and no open PR
-- `review` — open PR from `task/T-XXX` (without `blocked` / `owner-action`)
-- `blocked` — open PR from `task/T-XXX` has label `blocked` or `owner-action` (issue labels alone never change status or reserve `touches`)
+- `review` — open PR from `task/T-XXX`
+- `blocked` — a branch or PR exists and the card's Issue carries `needs: owner`: the owner step is still pending. Informational only; it never prevents a merge
 - `done` — card on `origin/main` has `status: done` (`tasks:status` and `tasks:next` read `done` state from `origin/main`, falling back locally only before `docs/tasks/` exists on `origin/main`)
 
 ## Branch, Worktree & Claim Rules
@@ -23,10 +23,16 @@ Frontmatter `status` may only be `todo` or `done` (set `status: done` only in th
   - Skips cards whose `touches` paths/globs overlap any active `doing`, `review`, or `blocked` card (while `wip_limit = 3` counts `doing + review`).
   - Preview without claiming via `pnpm tasks:next --dry-run`.
 
+## Labels
+
+- `priority: P0|P1|P2` and `area: <name>` come from the card frontmatter; `sync-issues` applies them to the Issue.
+- `needs: owner` goes on the **Issue** of a card with a pending owner step, never on a PR.
+- `sync-issues` creates any missing label (`needs: owner`, priority, area) before creating issues.
+
 ## Evidence & `owner_action` Rules
 
 - **Evidence rule:** Acceptance criteria are `- [ ]` items. Check an item `- [x]` **only** when the immediately following line is `evidence: <command and real output, or PR comment link>`. Enforced by `pnpm tasks:lint`.
-- **`owner_action: true` cards** (secrets, GitHub settings): prepare exact commands/instructions in the PR, apply labels `blocked` and `owner-action`, and do **not** merge until the owner comments `"owner step done"` on the PR.
+- **`owner_action: true` cards** (secrets, deploys, GitHub settings): the PR prepares the exact commands, uses `Refs #N` (never `Closes`), and merges like any other PR once its gates pass — a merge runs no deploy command and changes no GitHub setting. The remaining step lives in the linked Issue as a checkbox runbook labeled `needs: owner`; the Issue stays open until the owner finishes it.
 
 ## Stale Claims & Validation
 

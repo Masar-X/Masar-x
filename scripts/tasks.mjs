@@ -23,6 +23,7 @@ export const HOURS_24_MS = 24 * 60 * 60 * 1000;
 export const PRIORITY_ORDER = Object.freeze({ P0: 0, P1: 1, P2: 2 });
 export const VALID_PRIORITIES = Object.freeze(["P0", "P1", "P2"]);
 export const VALID_STATUSES = Object.freeze(["todo", "done"]);
+
 export const REQUIRED_FRONTMATTER_KEYS = Object.freeze([
   "id",
   "title",
@@ -44,6 +45,35 @@ export const REQUIRED_SECTIONS = Object.freeze([
   "Rollback",
   "Open questions",
 ]);
+
+/**
+ * Label on the Issue of a card whose remaining step belongs to the repository
+ * owner. The former names are still accepted on open PRs and issues.
+ */
+export const OWNER_LABEL = "needs: owner";
+export const LEGACY_OWNER_LABELS = Object.freeze(["blocked", "owner-action"]);
+
+/** Card areas that get an `area: <name>` label. */
+export const AREAS = Object.freeze(["web", "desktop", "mobile", "shared", "supabase", "ci", "docs"]);
+
+/** Labels `sync-issues` works with: `needs: owner`, one per priority, one per area. */
+export const LABEL_SCHEME = Object.freeze([
+  {
+    name: OWNER_LABEL,
+    color: "FBCA04",
+    description: "Waiting on a step only the repository owner can do (secret, deploy, GitHub setting)",
+  },
+  { name: "priority: P0", color: "B60205", description: "Priority P0" },
+  { name: "priority: P1", color: "D93F0B", description: "Priority P1" },
+  { name: "priority: P2", color: "FBCA04", description: "Priority P2" },
+  ...AREAS.map((area) => ({ name: `area: ${area}`, color: "6E7781", description: `Area: ${area}` })),
+]);
+
+/** Label names (current or former) that mark a card as waiting on the owner. */
+export function isOwnerWaitingLabel(label) {
+  const lower = String(label ?? "").trim().toLowerCase();
+  return lower === OWNER_LABEL || LEGACY_OWNER_LABELS.includes(lower);
+}
 
 const TASK_ID_RE = /^T-\d{3,}[a-z]?$/;
 const CHECKED_ITEM_RE = /^\s*-\s*\[[xX]\]/;
@@ -365,25 +395,45 @@ export function parseOpenPrs(jsonText) {
 }
 
 /**
- * Derive runtime task status from frontmatter + git/PR state.
+ * Parse `gh issue list --state open --json title,labels` into a Map of label
+ * names keyed by the task ID in the title (`T-XXX <title>`, as `sync-issues`
+ * writes it).
  */
-export function deriveCardStatus(card, { cardsById, remoteBranches, openPrsByTaskId }) {
+export function parseOpenIssues(jsonText) {
+  const list = typeof jsonText === "string" ? JSON.parse(jsonText || "[]") : (jsonText ?? []);
+  const labelsByTaskId = new Map();
+  for (const issue of list) {
+    const match = String(issue?.title ?? "").match(/^(T-\d{3,}[a-z]?)(?:\s|$)/);
+    if (!match) continue;
+    const labels = Array.isArray(issue.labels) ? issue.labels : [];
+    labelsByTaskId.set(
+      match[1],
+      labels.map((l) => (typeof l === "string" ? l : String(l?.name ?? ""))).filter(Boolean)
+    );
+  }
+  return labelsByTaskId;
+}
+
+/**
+ * Derive runtime task status from frontmatter + git/PR/issue state.
+ */
+export function deriveCardStatus(
+  card,
+  { cardsById, remoteBranches, openPrsByTaskId, issueLabelsByTaskId }
+) {
   if (card.status === "done") return "done";
 
   const prs = openPrsByTaskId.get(card.id) ?? [];
-  if (prs.length > 0) {
-    const hasBlockedLabel = prs.some((pr) =>
-      pr.labels.some((lbl) => {
-        const lower = lbl.toLowerCase();
-        return lower === "blocked" || lower === "owner-action";
-      })
-    );
-    return hasBlockedLabel ? "blocked" : "review";
-  }
+  const hasBranch = remoteBranches.has(card.id);
+  const waitingOnOwner =
+    prs.some((pr) => pr.labels.some(isOwnerWaitingLabel)) ||
+    (issueLabelsByTaskId?.get(card.id) ?? []).some(isOwnerWaitingLabel);
 
-  if (remoteBranches.has(card.id)) {
-    return "doing";
-  }
+  // An owner label alone never changes status: only a card already in flight
+  // (branch or PR) can be `blocked`, and that status never prevents a merge.
+  if ((prs.length > 0 || hasBranch) && waitingOnOwner) return "blocked";
+  if (prs.length > 0) return "review";
+  if (hasBranch) return "doing";
 
   const deps = Array.isArray(card.depends_on) ? card.depends_on : [];
   const hasUnmetDep = deps.some((depId) => {
@@ -696,11 +746,16 @@ export function lintCards(cards) {
 /**
  * Compute sorted status rows and WIP slot occupancy.
  */
-export function computeStatusRows(cards, { remoteBranches, openPrsByTaskId }) {
+export function computeStatusRows(cards, { remoteBranches, openPrsByTaskId, issueLabelsByTaskId }) {
   const cardsById = new Map(cards.map((c) => [c.id, c]));
   const rows = cards
     .map((card) => {
-      const derivedStatus = deriveCardStatus(card, { cardsById, remoteBranches, openPrsByTaskId });
+      const derivedStatus = deriveCardStatus(card, {
+        cardsById,
+        remoteBranches,
+        openPrsByTaskId,
+        issueLabelsByTaskId,
+      });
       const prs = openPrsByTaskId.get(card.id) ?? [];
       let refPr = "-";
       if (prs.length > 0) {
@@ -851,7 +906,13 @@ export function buildIssueCreateArgs(card, { repo = DEFAULT_REPO } = {}) {
   ].join("\n");
 
   const labels = [
-    ...new Set([card.priority, card.area, ...(card.owner_action ? ["owner-action"] : [])].filter(Boolean)),
+    ...new Set(
+      [
+        `priority: ${card.priority}`,
+        `area: ${card.area}`,
+        ...(card.owner_action ? [OWNER_LABEL] : []),
+      ].filter(Boolean)
+    ),
   ];
 
   const args = ["issue", "create", "--repo", repo, "--title", title, "--body", body];
@@ -859,6 +920,24 @@ export function buildIssueCreateArgs(card, { repo = DEFAULT_REPO } = {}) {
     args.push("--label", label);
   }
   return args;
+}
+
+/**
+ * `gh label create` args for every scheme label missing from `existingNames`.
+ */
+export function buildMissingLabelArgs(existingNames, { repo = DEFAULT_REPO } = {}) {
+  const have = new Set([...existingNames].map((name) => String(name ?? "").trim().toLowerCase()));
+  return LABEL_SCHEME.filter((label) => !have.has(label.name.toLowerCase())).map((label) => [
+    "label",
+    "create",
+    label.name,
+    "--repo",
+    repo,
+    "--color",
+    label.color,
+    "--description",
+    label.description,
+  ]);
 }
 
 function formatShellArg(arg) {
@@ -983,9 +1062,15 @@ function fetchGitState(exec, cwd, repo) {
     ],
     { cwd }
   );
+  const issueJsonOut = exec(
+    "gh",
+    ["issue", "list", "--repo", repo, "--state", "open", "--limit", "500", "--json", "title,labels"],
+    { cwd }
+  );
   return {
     remoteBranches: parseLsRemoteBranches(lsRemoteOut),
     openPrsByTaskId: parseOpenPrs(prJsonOut),
+    issueLabelsByTaskId: parseOpenIssues(issueJsonOut),
   };
 }
 
@@ -1254,6 +1339,16 @@ export function runSyncIssues(args = [], opts = {}) {
   const sorted = [...cards].sort(compareCards);
   const commands = [];
 
+  // Issue labels must exist before any `gh issue create` uses them.
+  const existingLabels = JSON.parse(
+    io.exec("gh", ["label", "list", "--repo", repo, "--limit", "200", "--json", "name"], { cwd: io.cwd }) ||
+      "[]"
+  );
+  const labelCommands = buildMissingLabelArgs(
+    existingLabels.map((label) => label?.name),
+    { repo }
+  ).map((args) => ({ args, command: `gh ${args.map(formatShellArg).join(" ")}` }));
+
   for (const card of sorted) {
     if (card.status === "done") {
       io.out(`# Skipping ${card.id} (status: done)`);
@@ -1264,11 +1359,21 @@ export function runSyncIssues(args = [], opts = {}) {
   }
 
   if (!apply) {
-    io.out(`# Dry-run (${commands.length} issue command(s)). Pass --apply to execute.`);
+    io.out(
+      `# Dry-run (${commands.length} issue command(s), ${labelCommands.length} label command(s)). Pass --apply to execute.`
+    );
+    for (const entry of labelCommands) {
+      io.out(entry.command);
+    }
     for (const entry of commands) {
       io.out(entry.command);
     }
-    return { exitCode: 0, applied: false, commands };
+    return { exitCode: 0, applied: false, commands, labelCommands };
+  }
+
+  for (const entry of labelCommands) {
+    io.exec("gh", entry.args, { cwd: io.cwd });
+    io.out(`Created label: ${entry.args[2]}`);
   }
 
   const existingJson = io.exec(
@@ -1296,7 +1401,7 @@ export function runSyncIssues(args = [], opts = {}) {
     created.push({ id: entry.card.id, output: result });
   }
 
-  return { exitCode: 0, applied: true, commands, created, skippedExisting };
+  return { exitCode: 0, applied: true, commands, labelCommands, created, skippedExisting };
 }
 
 /**
@@ -1343,7 +1448,7 @@ export function main(argv = process.argv.slice(2), opts = {}) {
           "  status                   Show derived task status table",
           "  next [--dry-run] [--force]  Claim next eligible todo card",
           "  release <T-XXX> [--force]   Delete stale remote branch",
-          "  sync-issues [--apply]       Print (or create) GitHub issues",
+          "  sync-issues [--apply]       Print (or create) labels and GitHub issues",
           "  lint                     Validate docs/tasks/T-*.md cards",
         ].join("\n")
       );
