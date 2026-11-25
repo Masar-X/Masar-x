@@ -108,7 +108,7 @@ seed supplies those fixtures.
 
 ```text
 NOTICE:  PREFLIGHT PASS: postgres can assume authenticated and service_role
-NOTICE:  SECTION 1 PASS: all <N> public tables verified with RLS enabled
+NOTICE:  SECTION 1 PASS: all 50 public tables verified with RLS enabled
 NOTICE:  SECTION 1-negative PASS: the sweep flags a public table without RLS as expected
 NOTICE:  SECTION 1c PASS: user-data views use security_invoker
 NOTICE:  3.1 profiles PASS: cross-user insert rejected as expected
