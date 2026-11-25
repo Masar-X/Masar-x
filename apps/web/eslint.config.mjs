@@ -2,6 +2,33 @@ import nextPlugin from "@next/eslint-plugin-next";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
+import { browserSupabaseImportAllowlist } from "./eslint-supabase-allowlist.mjs";
+
+// AI provider SDK imports are forbidden in any client context (T013, Spec
+// 004 Phase 2): the shared AI client in `packages/shared/src/ai/` is the
+// only consumer that may reference the provider SDKs, and it routes through
+// the Supabase Edge Function. Kept as a const so the browser-Supabase
+// ratchet block below composes it with its own patterns without changing
+// severity or messages.
+const aiProviderImportPaths = [
+  {
+    name: "openai",
+    message:
+      "Direct import of `openai` is forbidden in client contexts. " +
+      "Use the shared AI client (`packages/shared/src/ai/`) which " +
+      "routes through the Supabase Edge Function. See " +
+      "specs/004-multi-platform-expansion/contracts/ai-boundary.md.",
+  },
+  {
+    name: "@anthropic-ai/sdk",
+    message:
+      "Direct import of `@anthropic-ai/sdk` is forbidden in client " +
+      "contexts. Use the shared AI client (`packages/shared/src/ai/`) " +
+      "which routes through the Supabase Edge Function. See " +
+      "specs/004-multi-platform-expansion/contracts/ai-boundary.md.",
+  },
+];
+
 export default [
   {
     ignores: [
@@ -81,23 +108,61 @@ export default [
       // `error` so a slip becomes a build break, not a warning.
       "no-restricted-imports": [
         "error",
+        { paths: aiProviderImportPaths },
+      ],
+    },
+  },
+  {
+    // Browser-Supabase import ratchet (T-009, see docs/ARCHITECTURE.md).
+    // Client code must not create Supabase clients directly: reads go
+    // through the server surface (`src/lib/supabase/server.ts`, Server
+    // Actions in `src/actions/`, Route Handlers in `src/app/api/`), and the
+    // browser client lives in the data layer (`src/lib/supabase.ts`
+    // singleton, `src/lib/supabase/client.ts` per-call factory). The
+    // patterns cover the alias spellings and every relative spelling
+    // observed in the repo, including the bare `./supabase` form used from
+    // `src/lib` itself. Exempted: the data layer, tests, and the
+    // grandfathered baseline in `eslint-supabase-allowlist.mjs` (the ONLY
+    // exemption list - removing an entry re-flags that file; a new
+    // un-allowlisted importer fails lint immediately). This block re-states
+    // the AI provider restriction because a flat-config block that sets a
+    // rule replaces the earlier options wholesale for the files it covers.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/lib/supabase/**",
+      "src/**/__tests__/**",
+      ...browserSupabaseImportAllowlist.map((path) =>
+        // Allowlist entries are exact paths and may contain glob
+        // metacharacters (`src/app/[locale]/...`) - escape them so they
+        // match literally.
+        path.replace(/[$()*+?[\]^{|}]/g, "\\$&"),
+      ),
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
         {
-          paths: [
+          paths: aiProviderImportPaths,
+          patterns: [
             {
-              name: "openai",
+              // A single anchored regex for the alias spellings too. The
+              // gitignore-style `group` alternative (`@/lib/supabase`) also
+              // matches everything UNDER the path, which would ban the
+              // sanctioned `@/lib/supabase/server` and `@/lib/supabase/admin`
+              // server modules. Anchored alternatives cover the two browser
+              // modules via the alias and every relative spelling observed
+              // in the repo, including the bare `./supabase` form used from
+              // `src/lib` itself.
+              regex:
+                "^@/lib/supabase(/client)?(\\.ts)?$|" +
+                "^(\\.{1,2}/)+(lib/)?supabase(/client)?(\\.ts)?$",
               message:
-                "Direct import of `openai` is forbidden in client contexts. " +
-                "Use the shared AI client (`packages/shared/src/ai/`) which " +
-                "routes through the Supabase Edge Function. See " +
-                "specs/004-multi-platform-expansion/contracts/ai-boundary.md.",
-            },
-            {
-              name: "@anthropic-ai/sdk",
-              message:
-                "Direct import of `@anthropic-ai/sdk` is forbidden in client " +
-                "contexts. Use the shared AI client (`packages/shared/src/ai/`) " +
-                "which routes through the Supabase Edge Function. See " +
-                "specs/004-multi-platform-expansion/contracts/ai-boundary.md.",
+                "Browser Supabase clients may only be created in the data " +
+                "layer (src/lib/supabase). Fetch data server-side via " +
+                "src/lib/supabase/server, Server Actions (src/actions) or " +
+                "Route Handlers (src/app/api) instead. Grandfathered files " +
+                "are listed in apps/web/eslint-supabase-allowlist.mjs - " +
+                "see docs/ARCHITECTURE.md.",
             },
           ],
         },
