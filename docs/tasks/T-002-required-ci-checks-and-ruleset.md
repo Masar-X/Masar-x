@@ -49,7 +49,8 @@ Ruleset `20299668` requires `test`, `workspaces`, `mobile`, `deno-check`, `deps-
   evidence: `gh api repos/Masar-X/Masar-x/rulesets/20299668` (admin, 2026-11-25) -> required contexts `Vercel`, `next build`, `ESLint`, `ai-endpoint-grep`, `gitleaks-artifacts`, `e2e`, `workflow-lint`; `strict_required_status_checks_policy: false`; rule types `deletion`, `required_linear_history`, `pull_request`, `required_status_checks`, `required_signatures`, `non_fast_forward`; `bypass_actors: []`; `current_user_can_bypass: never`.
 - [x] #312 carries the `needs: owner` label and the runbook.
   evidence: `gh issue view 312 --json state,labels,comments` -> `state: OPEN labels: needs: owner, priority: P0, area: ci comments: 1`; the comment is the runbook (fresh `GET`, diff check, `PUT`).
-- [ ] `bash .github/scripts/check-doc-links.sh` exits 0 and CI `workflow-lint` passes. (Local half done, see Evidence; the CI half is ticked once the run on this PR's head reports.)
+- [x] `bash .github/scripts/check-doc-links.sh` exits 0 and CI `workflow-lint` passes.
+  evidence: local `bash .github/scripts/check-doc-links.sh` -> `All internal Markdown links resolve.`, exit 0; CI run 45709467878 (head 621b918) -> `workflow-lint` `success`, run conclusion `success`.
 
 ## Evidence
 
