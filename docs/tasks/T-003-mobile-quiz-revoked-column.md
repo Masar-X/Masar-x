@@ -2,7 +2,7 @@
 id: T-003
 title: "Stop selecting revoked correct_answer in mobile quiz"
 priority: P0
-status: todo
+status: done
 depends_on: []
 touches:
   - "apps/mobile/src/lib/quiz.ts"
@@ -45,11 +45,22 @@ Remove `correct_answer` from mobile `quiz_questions` queries and align mobile qu
 
 <!-- Rule: `- [x]` is allowed ONLY when the very next line is `evidence: <command + real output>` (enforced by `pnpm tasks:lint`). -->
 
-- [ ] `rg -n "correct_answer" apps/mobile/src/` returns zero matches in runtime queries/types.
-- [ ] `pnpm --filter mobile test` exits 0 with `quiz-service.test.ts` asserting `correct_answer` is excluded from `.select(...)`.
-- [ ] `pnpm --filter mobile typecheck && pnpm --filter mobile lint && pnpm --filter mobile export` exits 0.
+- [x] `rg -n "correct_answer" apps/mobile/src/` returns zero matches in runtime queries/types.
+  evidence: `rg -n "correct_answer" apps/mobile/src/` -> 0 matches in runtime queries/types; sole match is the negative test assertion at `apps/mobile/src/lib/__tests__/quiz-service.test.ts:71` (`expect(String(questionSelect!.args[0])).not.toContain("correct_answer")`)
+- [x] `pnpm --filter mobile test` exits 0 with `quiz-service.test.ts` asserting `correct_answer` is excluded from `.select(...)`.
+  evidence: `pnpm --filter mobile test` -> exit 0 (`Test Files 16 passed (16)`, `Tests 129 passed | 1 skipped (130)`, `src/lib/__tests__/quiz-service.test.ts` 13 tests passed)
+- [x] `pnpm --filter mobile typecheck && pnpm --filter mobile lint && pnpm --filter mobile export` exits 0.
+  evidence: `pnpm --filter mobile typecheck` (`tsc --noEmit`), `pnpm --filter mobile lint` (`eslint .`), and `pnpm --filter mobile export` (`expo export --platform android`, 1399 modules -> `dist`) all exited 0.
 
 ## Evidence
+
+- `rg -n "correct_answer" "apps/mobile/src/"`:
+  - `apps/mobile/src/lib/__tests__/quiz-service.test.ts:71: expect(String(questionSelect!.args[0])).not.toContain("correct_answer");` (0 runtime matches).
+- `pnpm --filter mobile typecheck`: exit 0 (`tsc --noEmit`).
+- `pnpm --filter mobile lint`: exit 0 (`eslint .`).
+- `pnpm --filter mobile test`: exit 0 (`Test Files 16 passed (16)`, `Tests 129 passed | 1 skipped (130)`; `quiz-service.test.ts` 13/13 passed, including `.select(...)` column exclusion, `finish_quiz_attempt` RPC grading, and guest completion parity).
+- `pnpm --filter mobile export`: exit 0 (`expo export --platform android`, `Android Bundled 15990ms ... index.js (1399 modules)`, `App exported to: dist`).
+- Not verified in this session: physical device / Expo Go runtime check against live Supabase (owner verification).
 
 ## Rollback
 

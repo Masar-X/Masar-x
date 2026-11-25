@@ -20,6 +20,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 import {
+  completeQuizAttempt,
   fetchQuizWithQuestions,
   finishAttempt,
   getGuestResult,
@@ -34,7 +35,7 @@ beforeEach(() => {
 });
 
 describe("fetchQuizWithQuestions", () => {
-  it("maps quiz + ordered question rows to the player shape", async () => {
+  it("maps quiz + ordered question rows to the player shape without selecting revoked answer key", async () => {
     const chain = createSupabaseMock();
     chain.respondWith(
       { data: { id: "q1", title: "T", description: "D", duration_seconds: 600 }, error: null },
@@ -43,7 +44,7 @@ describe("fetchQuizWithQuestions", () => {
     chain.respondWith(
       {
         data: [
-          { id: "qq1", quiz_id: "q1", question: "Q?", options: ["a", "b"], correct_answer: 1, explanation: "e", image_url: null, order_index: 0 },
+          { id: "qq1", quiz_id: "q1", question: "Q?", options: ["a", "b"], explanation: "e", image_url: null, order_index: 0 },
         ],
         error: null,
       },
@@ -58,9 +59,16 @@ describe("fetchQuizWithQuestions", () => {
       id: "qq1",
       question: "Q?",
       options: ["a", "b"],
-      correctAnswer: 1,
       explanation: "e",
     });
+    const questionSelect = chain.calls.find(
+      (c) => c.table === "quiz_questions" && c.method === "select",
+    );
+    expect(questionSelect).toBeDefined();
+    expect(questionSelect!.args[0]).toBe(
+      "id, quiz_id, question, options, explanation, image_url, order_index",
+    );
+    expect(String(questionSelect!.args[0])).not.toContain("correct_answer");
     expect(chain.calls.find((c) => c.method === "order")!.args).toEqual([
       "order_index",
       { ascending: true },
@@ -82,7 +90,7 @@ describe("fetchQuizWithQuestions", () => {
       { table: "quizzes" },
     );
     chain.respondWith(
-      { data: [{ id: "qq1", question: "Q?", options: null, correct_answer: 0 }], error: null },
+      { data: [{ id: "qq1", question: "Q?", options: null }], error: null },
       { table: "quiz_questions" },
     );
     const res = await fetchQuizWithQuestions(chain.supabase as never, "q1");
@@ -118,13 +126,139 @@ describe("attempt lifecycle", () => {
     expect((upsert!.args[0] as Record<string, unknown>).is_correct).toBe(true);
   });
 
-  it("finishAttempt calls the server-grading RPC and returns trusted numbers (spec 030)", async () => {
-    const chain = createSupabaseMock({ data: { success: true, score: 4, total_questions: 5 }, error: null });
-    const result = await finishAttempt(chain.supabase as never, "att-1", { timeTakenSeconds: 120 });
+  it("finishAttempt calls the server-grading RPC and returns trusted numbers + graded answers (spec 030)", async () => {
+    const gradedAnswers = [
+      { question_id: "qq1", selected_option: 1, is_correct: true },
+    ];
+    const chain = createSupabaseMock({
+      data: {
+        success: true,
+        score: 4,
+        total_questions: 5,
+        answers: gradedAnswers,
+      },
+      error: null,
+    });
+    const result = await finishAttempt(chain.supabase as never, "att-1", {
+      timeTakenSeconds: 120,
+    });
     const rpc = chain.calls.find((c) => c.method === "rpc");
     expect(rpc!.table).toBe("rpc:finish_quiz_attempt");
-    expect(rpc!.args[0]).toEqual({ p_attempt_id: "att-1", p_time_taken_seconds: 120 });
-    expect(result).toEqual({ score: 4, totalQuestions: 5 });
+    expect(rpc!.args[0]).toEqual({
+      p_attempt_id: "att-1",
+      p_time_taken_seconds: 120,
+    });
+    expect(result).toEqual({
+      score: 4,
+      totalQuestions: 5,
+      answers: gradedAnswers,
+    });
+  });
+
+  it("finishAttempt defaults answers to an empty array when omitted", async () => {
+    const chain = createSupabaseMock({
+      data: { success: true, score: 0, total_questions: 0 },
+      error: null,
+    });
+    const result = await finishAttempt(chain.supabase as never, "att-1");
+    expect(result).toEqual({ score: 0, totalQuestions: 0, answers: [] });
+  });
+});
+
+describe("completeQuizAttempt (server grading vs guest parity)", () => {
+  const keylessQuestions = [
+    { id: "qq1", question: "Q1?", options: ["A", "B"] },
+    { id: "qq2", question: "Q2?", options: ["C", "D"] },
+  ];
+
+  it("signed-in path sends is_correct=false when key is absent and returns server-graded results", async () => {
+    const gradedAnswers = [
+      { question_id: "qq1", selected_option: 1, is_correct: true },
+    ];
+    const chain = createSupabaseMock();
+    chain.respondWith({ data: { id: "att-1" }, error: null }, { table: "quiz_attempts" });
+    chain.respondWith({ data: null, error: null }, { table: "quiz_answers" });
+    chain.respondWith(
+      {
+        data: {
+          success: true,
+          score: 1,
+          total_questions: 2,
+          answers: gradedAnswers,
+        },
+        error: null,
+      },
+      { table: "rpc:finish_quiz_attempt" },
+    );
+
+    const result = await completeQuizAttempt({
+      supabase: chain.supabase as never,
+      quizId: "quiz-1",
+      quizTitle: "Sample",
+      userId: "user-1",
+      questions: keylessQuestions,
+      answers: [1, null],
+      timeTakenSeconds: 45,
+    });
+
+    const upserts = chain.calls.filter(
+      (c) => c.table === "quiz_answers" && c.method === "upsert",
+    );
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0].args[0]).toMatchObject({
+      attempt_id: "att-1",
+      question_id: "qq1",
+      selected_option: 1,
+      is_correct: false,
+    });
+    const rpc = chain.calls.find((c) => c.method === "rpc");
+    expect(rpc?.table).toBe("rpc:finish_quiz_attempt");
+    expect(rpc?.args[0]).toEqual({
+      p_attempt_id: "att-1",
+      p_time_taken_seconds: 45,
+    });
+    expect(result).toEqual({
+      score: 1,
+      total: 2,
+      savedToServer: true,
+      isGuest: false,
+      gradedAnswers,
+    });
+  });
+
+  it("guest path saves locally with isCorrect=false, skips DB, and omits gradedAnswers", async () => {
+    const chain = createSupabaseMock();
+    const result = await completeQuizAttempt({
+      supabase: chain.supabase as never,
+      quizId: "quiz-guest",
+      quizTitle: "Guest Quiz",
+      userId: null,
+      questions: keylessQuestions,
+      answers: [0, 1],
+      timeTakenSeconds: 30,
+    });
+
+    expect(chain.calls).toEqual([]);
+    expect(result).toEqual({
+      score: 0,
+      total: 2,
+      savedToServer: false,
+      isGuest: true,
+    });
+    expect(result.gradedAnswers).toBeUndefined();
+
+    const cached = await getGuestResult("quiz-guest");
+    expect(cached).toMatchObject({
+      quizId: "quiz-guest",
+      score: 0,
+      total: 2,
+      title: "Guest Quiz",
+      timeTakenSeconds: 30,
+      answers: [
+        { questionId: "qq1", selected: 0, isCorrect: false },
+        { questionId: "qq2", selected: 1, isCorrect: false },
+      ],
+    });
   });
 });
 
