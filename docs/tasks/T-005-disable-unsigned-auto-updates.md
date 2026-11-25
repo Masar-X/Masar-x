@@ -2,12 +2,15 @@
 id: T-005
 title: "Disable unsigned desktop auto-updates"
 priority: P0
-status: todo
+status: done
 depends_on: []
 touches:
   - "apps/desktop/electron-builder.yml"
   - "apps/desktop/src/main/updater.ts"
   - "apps/desktop/src/main/__tests__/updater.test.ts"
+  - "apps/web/src/components/desktop/UpdateToast.tsx"
+  - "packages/shared/src/messages/ar/desktopUpdates.json"
+  - "packages/shared/src/messages/en/desktopUpdates.json"
 owner_action: false
 area: desktop
 estimate: 0.5d
@@ -43,11 +46,21 @@ Prevent silent download and install-on-quit of unsigned desktop releases by sett
 
 <!-- Rule: `- [x]` is allowed ONLY when the very next line is `evidence: <command + real output>` (enforced by `pnpm tasks:lint`). -->
 
-- [ ] `pnpm --filter desktop test` exits 0 with new assertions verifying `autoUpdater.autoDownload === false` and `autoUpdater.autoInstallOnAppQuit === false` after `checkOnStartup()`.
-- [ ] `pnpm --filter desktop typecheck && pnpm --filter desktop lint` exits 0.
-- [ ] `apps/desktop/electron-builder.yml` includes a clear signing follow-up comment linking `verifyUpdateCodeSignature: true` to re-enabling `autoDownload` / `autoInstallOnAppQuit` in `apps/desktop/src/main/updater.ts`.
+- [x] `pnpm --filter desktop test` exits 0 with new assertions verifying `autoUpdater.autoDownload === false` and `autoUpdater.autoInstallOnAppQuit === false` after `checkOnStartup()`.
+  evidence: `pnpm --filter desktop test` in the task-T-005 worktree exited 0 — `Test Files 6 passed | 1 skipped (7)`, `Tests 69 passed | 4 skipped (73)`, duration 6.50s, EXIT=0; new case `checkOnStartup pins autoDownload/autoInstallOnAppQuit to false (T-005 unsigned releases)` passes (`updater.test.ts` now 16 tests; it seeds both flags `true` on `autoUpdaterMock`, runs `checkOnStartup()`, asserts both `false`).
+- [x] `pnpm --filter desktop typecheck && pnpm --filter desktop lint` exits 0.
+  evidence: `pnpm --filter desktop typecheck` (`tsc --noEmit`) EXIT=0 and `pnpm --filter desktop lint` (`eslint .`) EXIT=0 in the task-T-005 worktree (2026-11-25).
+- [x] `apps/desktop/electron-builder.yml` includes a clear signing follow-up comment linking `verifyUpdateCodeSignature: true` to re-enabling `autoDownload` / `autoInstallOnAppQuit` in `apps/desktop/src/main/updater.ts`.
+  evidence: T-005 comment block added directly under `# verifyUpdateCodeSignature: true` in the `win:` block (diff hunk `@@ -174,6 +174,14 @@ win:`): re-enable the signing block FIRST, then flip `autoDownload` / `autoInstallOnAppQuit` back to `true` in `updater.ts` (T-005 follow-up).
 
 ## Evidence
+
+- `pnpm install --frozen-lockfile` completed in the worktree (`node_modules/.modules.yaml` present) before running the gates.
+- `pnpm --filter desktop test`: EXIT=0 — `Test Files 6 passed | 1 skipped (7)`, `Tests 69 passed | 4 skipped (73)` (`updater.test.ts` 16/16 including the new T-005 pin assertion; `main.test.ts` 22/22 — the recently fixed async-drain assertions untouched).
+- `pnpm --filter desktop typecheck`: EXIT=0 (`tsc --noEmit`). `pnpm --filter desktop lint`: EXIT=0 (`eslint .`).
+- Extra gates for the step-3 files outside the original 3 `touches`: `pnpm --filter web typecheck` EXIT=0; shared suite `279 passed | 1 failed (280)` — the single failure is `src/types/schemas/__tests__/unused-exports-guard.test.ts` on `ProfileSchema`, which reproduces on the clean tree with this card's changes stashed (`CLEAN-TREE-EXIT=1`) and is already documented as a Windows environment failure of the same suite in T-001's evidence (`'grep' is not recognized...`); pre-existing, unrelated to this diff. The shared `namespaces-parity` per-key contract is inside the 279 passing.
+- Card correction (audit): `touches` extended with `apps/web/src/components/desktop/UpdateToast.tsx` + `packages/shared/src/messages/{ar,en}/desktopUpdates.json` — step 3 explicitly sanctioned modifying the existing notification UI and adding it to `touches`; the key rename `install` → `downloadFromReleases` in both locales keeps the per-key ar/en parity contract.
+- Not verified (no environment): packaged-app runtime behavior (no installer build/run) and the toast link click-through in a real Electron shell (UpdateToast has no unit/e2e coverage; the link is render-checked by web `tsc` only).
 
 ## Rollback
 
