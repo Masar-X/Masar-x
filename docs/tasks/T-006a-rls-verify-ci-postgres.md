@@ -45,8 +45,8 @@ Fix the 26 archived-migration references in `supabase/tests/rls-verify.sql` and 
   evidence: post-edit `rg -n "00[1-9]|01[0-9]|migrations\.old" supabase/tests/rls-verify.sql supabase/tests/README.md` in the worktree -> exactly 2 hits, both "Spec 004 / T055" attribution (rls-verify.sql:3, README.md:5); full output pasted in PR Evidence
 - [x] `actionlint -color` exits 0 on `.github/workflows/ci.yml`.
   evidence: local actionlint v1.7.7 (same pin as CI workflow-lint, windows amd64 release binary) run over all `.github/workflows/*.yml` in the worktree WITH shellcheck v0.10.0 on PATH -> zero findings, `ACTIONLINT_EXIT=0`; first push failed CI `workflow-lint` with shellcheck SC2034 (`i appears unused`, readiness wait at ci.yml:636) because the first local run had no shellcheck binary - fixed with an attempt-counter `until` loop and the full local pair re-run green before pushing the fix
-- [ ] The new CI `db-verify` Postgres 17 job replays `supabase/tests/prelude.sql`, all `supabase/migrations/*.sql`, `supabase/tests/rls-verify.sql`, and `supabase/tests/rpc-verify.sql` with `-v ON_ERROR_STOP=1` and exits 0.
-  note: no PostgreSQL available on this host (no docker / no local server), so the replay is exercised only by the CI `db-verify` run on this PR - unchecked until that run is observed green. Every step is a 1:1 mirror of the procedure verified for rpc-verify on portable PG (README "Running it"), plus the pg_cron requirement below.
+- [x] The new CI `db-verify` Postgres 17 job replays `supabase/tests/prelude.sql`, all `supabase/migrations/*.sql`, `supabase/tests/rls-verify.sql`, and `supabase/tests/rpc-verify.sql` with `-v ON_ERROR_STOP=1` and exits 0.
+  evidence: PR #339 run `45652650330`, job `139340949878` - `db-verify` PASS (23s), all 18 migrations replayed lexically, rls-verify sections 1a-1c + 3.1-3.12 all PASS (incl. `3.12 conversations PASS: own insert/message-attach/update/delete + FK cascade` on the granted path) and `RLS VERIFY COMPLETE`, then `rpc-verify: ALL SECTIONS PASSED (norm_subject_name, check_rate_limit, finish_quiz_attempt + guard, trw_redeem_access_code)`; all 15 PR checks green. No local PG/docker on this host - the replay was verified via CI only, as planned.
 
 ## Evidence
 
@@ -75,7 +75,7 @@ RG_EXIT=0
 ```
 
 - AC-2: `actionlint -color` (v1.7.7) with shellcheck v0.10.0 over the worktree -> zero findings, exit 0. First CI contact: `workflow-lint` failed with shellcheck SC2034 on the readiness-wait loop (fixed in commit 2); the full local pair was re-run green before pushing the fix, and CI `workflow-lint` then passed (run `45649929170`, 5s).
-- AC-3: pending the CI `db-verify` run on this PR (no local PG/docker on this host - not verified locally).
+- AC-3: GREEN on CI - run `45652650330` / job `139340949878` (23s): full lexical replay of all 18 migrations + both harnesses exit 0 (see AC-3 evidence above).
 
 - CI follow-up (db-verify run 45649929170 -> 45650554603, commit e2b1acd): all 18 migrations replay cleanly - the pg_cron pre-install flips the audit-retention line to `NOTICE: extension "pg_cron" already exists, skipping`; the remaining failure was `rls-verify.sql:747 ERROR: permission denied for table conversations` - the spec-049 table ships without table grants (Supabase grants blanket table privileges at bootstrap via default privileges; `bypassrls` does not cover table grants). Fix commit adds `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES/SEQUENCES TO anon, authenticated, service_role` to the roles step (ci.yml) and the README manual snippet - mirroring the Supabase bootstrap the RLS policies assume.
 
