@@ -48,9 +48,10 @@ export const REQUIRED_SECTIONS = Object.freeze([
 
 /**
  * Label on the Issue of a card whose remaining step belongs to the repository
- * owner. The former names are still accepted on open PRs and issues.
+ * owner.
  */
 export const OWNER_LABEL = "needs: owner";
+/** Former names of that label, still honored on issues and on open PRs. */
 export const LEGACY_OWNER_LABELS = Object.freeze(["blocked", "owner-action"]);
 
 /** Card areas that get an `area: <name>` label. */
@@ -425,8 +426,11 @@ export function deriveCardStatus(
 
   const prs = openPrsByTaskId.get(card.id) ?? [];
   const hasBranch = remoteBranches.has(card.id);
+  // `needs: owner` belongs on the Issue; on a PR only the former names count.
   const waitingOnOwner =
-    prs.some((pr) => pr.labels.some(isOwnerWaitingLabel)) ||
+    prs.some((pr) =>
+      pr.labels.some((lbl) => LEGACY_OWNER_LABELS.includes(String(lbl ?? "").trim().toLowerCase()))
+    ) ||
     (issueLabelsByTaskId?.get(card.id) ?? []).some(isOwnerWaitingLabel);
 
   // An owner label alone never changes status: only a card already in flight

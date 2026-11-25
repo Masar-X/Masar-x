@@ -244,7 +244,17 @@ describe("status derivation and dependency resolution", () => {
         ])
       ),
     };
-    assert.equal(deriveCardStatus(cards[1], withPr), "blocked"); // the label on the PR itself still counts
+    assert.equal(deriveCardStatus(cards[1], withPr), "review"); // `needs: owner` belongs on the Issue, not the PR
+
+    const withLegacyPr = {
+      ...withBranch,
+      openPrsByTaskId: parseOpenPrs(
+        JSON.stringify([
+          { headRefName: "task/T-002", number: 20, url: "", labels: [{ name: "owner-action" }] },
+        ])
+      ),
+    };
+    assert.equal(deriveCardStatus(cards[1], withLegacyPr), "blocked"); // a former label still on the PR counts
   });
 
   it("sorts P0 -> P1 -> P2 then ID ascending", () => {
@@ -714,7 +724,9 @@ describe("status and sync-issues", () => {
       ({ rootDir, tasksDir }) => {
         const createdTitles = [];
         const createdLabels = [];
+        const ghCalls = [];
         const exec = (cmd, args) => {
+          if (cmd === "gh") ghCalls.push(args.slice(0, 2).join(" "));
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
           if (cmd === "gh" && args[0] === "label" && args[1] === "list") {
             return JSON.stringify([{ name: "needs: owner" }, { name: "priority: P0" }]);
@@ -749,6 +761,11 @@ describe("status and sync-issues", () => {
         assert.ok(!createdLabels.includes("needs: owner") && !createdLabels.includes("priority: P0"));
         assert.deepEqual(res.skippedExisting, ["T-001"]);
         assert.deepEqual(createdTitles, ["T-002 New task"]);
+        // Labels are listed, then the missing ones created, before any issue command.
+        assert.equal(ghCalls[0], "label list");
+        const firstLabelCreate = ghCalls.indexOf("label create");
+        const firstIssueCommand = ghCalls.findIndex((c) => c.startsWith("issue "));
+        assert.ok(firstLabelCreate !== -1 && firstLabelCreate < firstIssueCommand);
       }
     );
   });

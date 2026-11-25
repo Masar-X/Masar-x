@@ -17,7 +17,7 @@ estimate: 0.25d
 ## Context
 
 - [VERIFIED] `.github/PULL_REQUEST_TEMPLATE.md` has a "What I did NOT verify" section, `docs/tasks/PROJECT.md` line 3 says "Agents must never run ...", and `docs/tasks/_TEMPLATE.md` asks for `[VERIFIED]`/`[INFERRED]` tags (read on `main` at `2949f2c`).
-- [VERIFIED] `AGENTS.md`, `.specify/` (9 tracked files), `.windsurf/workflows/review.md`, `.github/copilot-instructions.md`, `.github/agents/` and `.github/prompts/` are tracked (`git ls-files`, 2026-11-25) and are read by name by coding tools.
+- [VERIFIED] `AGENTS.md`, `.specify/` (9 tracked files) and `.windsurf/workflows/review.md` are tracked (`git ls-files`, 2026-11-25) and are read by name by coding tools. `.github/copilot-instructions.md`, `.github/agents/` and `.github/prompts/` exist on disk but are git-ignored (`.gitignore:208`), so they are not published.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Task-board docs and the PR template read like ordinary engineering documentation
 
 ## Non-goals
 
-- `AGENTS.md`, `.specify/`, `.windsurf/`, `.github/copilot-instructions.md`, `.github/agents/`, `.github/prompts/`: whether to keep, untrack, or move them is the owner's decision (see Open questions). Do not touch them here.
+- `AGENTS.md`, `.specify/` and `.windsurf/`: whether to keep, untrack, or move them out is the owner's decision (see Open questions). Do not touch them here.
 - `specs/**`, git history, and cards that are already open (each is fixed when it is next touched).
 
 ## Steps

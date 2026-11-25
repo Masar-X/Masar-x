@@ -21,7 +21,7 @@ estimate: 0.5d
 
 - [VERIFIED] `docs/tasks/README.md` at `2949f2c`: a PR for an `owner_action: true` card is labeled `blocked` and `owner-action` and waits for an `"owner step done"` comment before merging. `scripts/tasks.mjs` `deriveCardStatus` reads those two labels from open PRs only.
 - [VERIFIED] `gh label list` on 2026-11-25: `blocked`, `owner-action`, `P0`, `P1`, `P2`, and seven bare area names. PRs #333, #336 and #338 were green and frozen by the rule above.
-- [VERIFIED] A merge runs no deploy command (`rg "functions deploy" .github/` returns nothing) and cannot change GitHub settings (ruleset writes need admin credentials), so freezing those PRs protected nothing.
+- [VERIFIED] A merge runs no Edge Function deploy (`rg "functions deploy" .github/` returns nothing) and cannot change GitHub settings (ruleset writes need admin credentials). None of the three PRs touches the web app that Vercel deploys from `main`, so freezing them protected nothing.
 
 ## Goal
 
@@ -35,7 +35,7 @@ Labels that say what they mean: `needs: owner` on issues, `priority: P0|P1|P2`, 
 ## Steps
 
 1. Rename the live labels with `gh label edit` (attachments follow the rename), move the owner label from PRs #333/#336/#338 to issues #312/#314/#319, publish a runbook on each, delete the retired `blocked` label.
-2. `scripts/tasks.mjs`: `blocked` means a branch or PR exists and the card's Issue carries `needs: owner`; `sync-issues` uses and creates the new label names. Tests updated.
+2. `scripts/tasks.mjs`: `blocked` means a branch or PR exists and the card's Issue carries `needs: owner` (a former label still on an open PR counts too); `sync-issues` uses and creates the new label names. Tests updated.
 3. `docs/tasks/README.md`, `docs/tasks/PROJECT.md`, PR template: the new rule.
 4. Merge when green, fast-forward the primary checkout.
 5. Follow-up: drop the retired names from `scripts/tasks.mjs` once nothing carries them.
