@@ -52,7 +52,8 @@ Eliminate mutable GitHub Action tag and unverified binary supply-chain surfaces 
 evidence: git grep -cE "uses:.*@[0-9a-f]{40}" -- .github/workflows/ -> ci.yml:35, fallow.yml:2, lighthouse.yml:4, release.yml:3 (44/44 lines SHA-pinned); git grep -nE "uses:.*@v[0-9]" -- .github/workflows/ -> no matches (exit 1)
 - [x] All 3 binary downloads in `.github/workflows/ci.yml` (`ripgrep`, `gitleaks`, `actionlint`) verify `sha256sum -c -` before extraction.
 evidence: git grep -n sha256sum -- .github/workflows/ci.yml -> 3 "sha256sum -c -" gates (ci.yml:193 ripgrep, ci.yml:256 gitleaks, ci.yml:573 actionlint), each before extraction; values taken from the official release checksum files and the artifacts re-hashed locally: 4/4 MATCH
-- [ ] `actionlint -color` exits 0 and all CI jobs pass on the PR.
+- [x] `actionlint -color` exits 0 and all CI jobs pass on the PR.
+  evidence: `actionlint -color` (1.7.7) in the worktree -> no findings, exit 0; PR #343 CI on head 9b868dd, run 45715121792 -> all 17 checks pass, including `workflow-lint` (actionlint + shellcheck)
 
 ## Evidence
 
