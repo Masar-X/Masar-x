@@ -740,7 +740,7 @@ BEGIN;
       VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
       RETURNING id INTO v_cid;
       SET LOCAL ROLE authenticated;
-      SELECT set_config(
+      PERFORM set_config(
         'request.jwt.claims',
         '{"sub": "00000000-0000-0000-0000-0000000000a1", "role": "authenticated"}',
         true
@@ -798,7 +798,7 @@ BEGIN;
     END;
 
     SET LOCAL ROLE authenticated;
-    SELECT set_config(
+    PERFORM set_config(
       'request.jwt.claims',
       '{"sub": "00000000-0000-0000-0000-0000000000a1", "role": "authenticated"}',
       true
