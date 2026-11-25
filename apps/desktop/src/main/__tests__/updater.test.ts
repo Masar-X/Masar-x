@@ -14,7 +14,7 @@ import os from 'node:os';
 // must satisfy. It is written FIRST (TDD red phase). It MUST fail until T023
 // implements the Updater class.
 //
-// The contract has six assertions:
+// The contract has seven assertions:
 //   1. checkOnStartup() calls autoUpdater.checkForUpdates() once.
 //   2. autoUpdater 'update-available' triggers onAvailable subscribers.
 //   3. autoUpdater 'update-downloaded' does NOT write the pending-update
@@ -25,6 +25,9 @@ import os from 'node:os';
 //      (quitAndInstall itself handles app.quit() internally —
 //      we do NOT call app.quit() separately).
 //   6. A stale pending-update.json at startup triggers the rollback path.
+//   7. checkOnStartup() pins autoDownload/autoInstallOnAppQuit to false
+//      (T-005: unsigned releases must never download/install silently;
+//      the renderer links to manual GitHub Releases instead).
 //
 // The Updater class accepts an injected `autoUpdater` for tests so
 // the contract is verifiable without a real release feed.
@@ -205,6 +208,20 @@ describe('T023 — Updater contract', () => {
     const updater = new Updater({ userDataPath: tmpDir });
     await updater.checkOnStartup();
     expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkOnStartup pins autoDownload/autoInstallOnAppQuit to false (T-005 unsigned releases)', async () => {
+    // Seed electron-updater's documented defaults first to prove
+    // checkOnStartup() actively pins the flags — unsigned builds must
+    // never download or install-on-quit silently.
+    autoUpdaterMock.autoDownload = true;
+    autoUpdaterMock.autoInstallOnAppQuit = true;
+
+    const updater = new Updater({ userDataPath: tmpDir });
+    await updater.checkOnStartup();
+
+    expect(autoUpdaterMock.autoDownload).toBe(false);
+    expect(autoUpdaterMock.autoInstallOnAppQuit).toBe(false);
   });
 
   it('emits onAvailable when autoUpdater fires update-available', async () => {

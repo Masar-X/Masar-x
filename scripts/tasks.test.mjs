@@ -14,11 +14,13 @@ import {
   getLatestBranchActivity,
   globsOverlap,
   isRefAlreadyExistsError,
+  LABEL_SCHEME,
   lintCards,
   loadTaskCards,
   normalizePosixPath,
   parseFrontmatter,
   parseLsRemoteBranches,
+  parseOpenIssues,
   parseOpenPrs,
   parseRepoSlug,
   runLint,
@@ -203,8 +205,56 @@ describe("status derivation and dependency resolution", () => {
     assert.equal(deriveCardStatus(cards[1], state), "todo"); // T-001 is done
     assert.equal(deriveCardStatus(cards[2], state), "waiting-deps"); // T-002 is not done
     assert.equal(deriveCardStatus(cards[3], state), "doing"); // remote branch, no PR
-    assert.equal(deriveCardStatus(cards[4], state), "review"); // open PR without blocked/owner-action
-    assert.equal(deriveCardStatus(cards[5], state), "blocked"); // open PR with owner-action
+    assert.equal(deriveCardStatus(cards[4], state), "review"); // open PR without an owner label
+    assert.equal(deriveCardStatus(cards[5], state), "blocked"); // open PR with a former owner label
+  });
+
+  it("blocked needs an in-flight card and an owner label on its Issue; the label alone changes nothing", () => {
+    const cards = [
+      { id: "T-001", priority: "P0", status: "todo", depends_on: [], touches: ["a"] },
+      { id: "T-002", priority: "P0", status: "todo", depends_on: [], touches: ["b"] },
+      { id: "T-006a", priority: "P0", status: "todo", depends_on: [], touches: ["d"] },
+    ];
+    const cardsById = new Map(cards.map((c) => [c.id, c]));
+    const issueLabelsByTaskId = parseOpenIssues(
+      JSON.stringify([
+        { title: "T-001 Sample task", labels: [{ name: "needs: owner" }, { name: "priority: P0" }] },
+        { title: "T-006a Other card", labels: [{ name: "needs: owner" }] },
+      ])
+    );
+    assert.deepEqual([...issueLabelsByTaskId.keys()].sort(), ["T-001", "T-006a"]);
+    assert.deepEqual(issueLabelsByTaskId.get("T-001"), ["needs: owner", "priority: P0"]);
+
+    const state = { cardsById, remoteBranches: new Set(), openPrsByTaskId: new Map(), issueLabelsByTaskId };
+    assert.equal(deriveCardStatus(cards[0], state), "todo"); // labeled, but nothing in flight
+    assert.equal(deriveCardStatus(cards[2], state), "todo"); // "T-006a" never borrows the "T-006" label
+
+    const withBranch = {
+      ...state,
+      remoteBranches: parseLsRemoteBranches("111\trefs/heads/task/T-001\n222\trefs/heads/task/T-002\n"),
+    };
+    assert.equal(deriveCardStatus(cards[0], withBranch), "blocked"); // branch + owner label
+    assert.equal(deriveCardStatus(cards[1], withBranch), "doing"); // branch, no owner label
+
+    const withPr = {
+      ...withBranch,
+      openPrsByTaskId: parseOpenPrs(
+        JSON.stringify([
+          { headRefName: "task/T-002", number: 20, url: "", labels: [{ name: "needs: owner" }] },
+        ])
+      ),
+    };
+    assert.equal(deriveCardStatus(cards[1], withPr), "review"); // `needs: owner` belongs on the Issue, not the PR
+
+    const withLegacyPr = {
+      ...withBranch,
+      openPrsByTaskId: parseOpenPrs(
+        JSON.stringify([
+          { headRefName: "task/T-002", number: 20, url: "", labels: [{ name: "owner-action" }] },
+        ])
+      ),
+    };
+    assert.equal(deriveCardStatus(cards[1], withLegacyPr), "blocked"); // a former label still on the PR counts
   });
 
   it("sorts P0 -> P1 -> P2 then ID ascending", () => {
@@ -272,6 +322,7 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
               "333\trefs/heads/task/T-003",
             ].join("\n");
           }
+          if (cmd === "gh" && args[0] === "issue") return "[]";
           if (cmd === "gh" && args[0] === "pr") {
             return JSON.stringify([
               {
@@ -333,6 +384,7 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
           if (cmd === "git" && args[0] === "fetch") return "";
           if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-001\n";
+          if (cmd === "gh" && args[0] === "issue") return "[]";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           if (cmd === "git" && args[0] === "rev-parse") return "deadbeef1234\n";
           if (cmd === "gh" && args[0] === "api") {
@@ -394,6 +446,7 @@ describe("WIP limit enforcement and next selection / 422 retry", () => {
           if (cmd === "git" && args[0] === "fetch") return "";
           if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-001\n";
+          if (cmd === "gh" && args[0] === "issue") return "[]";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           throw new Error(`Should not have run: ${cmd} ${args.join(" ")}`);
         };
@@ -584,6 +637,7 @@ describe("status and sync-issues", () => {
           if (cmd === "git" && args[0] === "fetch") return "";
           if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "111\trefs/heads/task/T-002\n";
+          if (cmd === "gh" && args[0] === "issue") return "[]";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
         };
@@ -606,7 +660,7 @@ describe("status and sync-issues", () => {
     );
   });
 
-  it("sync-issues is dry-run by default and builds labels including owner-action", () => {
+  it("sync-issues is dry-run by default and uses the priority, area, and owner labels", () => {
     withTempTasksDir(
       {
         "T-001.md": makeCardMarkdown({
@@ -623,6 +677,7 @@ describe("status and sync-issues", () => {
         const exec = (cmd, args) => {
           calls.push([cmd, ...args]);
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "gh" && args[0] === "label" && args[1] === "list") return "[]";
           throw new Error(`Should not execute gh in dry-run: ${cmd} ${args.join(" ")}`);
         };
 
@@ -638,21 +693,29 @@ describe("status and sync-issues", () => {
         const output = stdout.join("\n");
         assert.match(output, /gh issue create/);
         assert.match(output, /T-001 Rotate secrets/);
-        assert.match(output, /owner-action/);
-        assert.equal(calls.some((c) => c[0] === "gh"), false);
+        // The only GitHub call is the read-only label listing.
+        assert.deepEqual(
+          calls.filter((c) => c[0] === "gh").map((c) => c.slice(0, 3).join(" ")),
+          ["gh label list"]
+        );
+        // No scheme label exists here, so every one gets a create command, before the issues.
+        assert.equal(res.labelCommands.length, LABEL_SCHEME.length);
+        assert.match(output, /gh label create "needs: owner" --repo Masar-X\/Masar-x --color FBCA04/);
+        assert.ok(output.indexOf("gh label create") < output.indexOf("gh issue create"));
 
         // Verify buildIssueCreateArgs directly
         const { cards } = loadTaskCards(tasksDir);
         const args = buildIssueCreateArgs(cards[0], { repo: "Masar-X/Masar-x" });
         assert.ok(args.includes("T-001 Rotate secrets"));
-        assert.ok(args.includes("P0"));
-        assert.ok(args.includes("security"));
-        assert.ok(args.includes("owner-action"));
+        assert.ok(args.includes("priority: P0"));
+        assert.ok(args.includes("area: security"));
+        assert.ok(args.includes("needs: owner"));
+        assert.ok(!args.includes("owner-action"));
       }
     );
   });
 
-  it("sync-issues --apply creates missing issues and skips existing ones", () => {
+  it("sync-issues --apply creates missing labels, then missing issues, and skips existing ones", () => {
     withTempTasksDir(
       {
         "T-001.md": makeCardMarkdown({ id: "T-001", title: "Already exists", priority: "P0", area: "web" }),
@@ -660,8 +723,18 @@ describe("status and sync-issues", () => {
       },
       ({ rootDir, tasksDir }) => {
         const createdTitles = [];
+        const createdLabels = [];
+        const ghCalls = [];
         const exec = (cmd, args) => {
+          if (cmd === "gh") ghCalls.push(args.slice(0, 2).join(" "));
           if (cmd === "git" && args[0] === "remote") return "https://github.com/Masar-X/Masar-x.git\n";
+          if (cmd === "gh" && args[0] === "label" && args[1] === "list") {
+            return JSON.stringify([{ name: "needs: owner" }, { name: "priority: P0" }]);
+          }
+          if (cmd === "gh" && args[0] === "label" && args[1] === "create") {
+            createdLabels.push(args[2]);
+            return "";
+          }
           if (cmd === "gh" && args[0] === "issue" && args[1] === "list") {
             return JSON.stringify([{ title: "T-001 Already exists" }]);
           }
@@ -682,8 +755,17 @@ describe("status and sync-issues", () => {
         });
         assert.equal(res.exitCode, 0);
         assert.equal(res.applied, true);
+        // Two labels already exist; the other nine are created first.
+        assert.equal(res.labelCommands.length, LABEL_SCHEME.length - 2);
+        assert.ok(createdLabels.includes("priority: P1") && createdLabels.includes("area: ci"));
+        assert.ok(!createdLabels.includes("needs: owner") && !createdLabels.includes("priority: P0"));
         assert.deepEqual(res.skippedExisting, ["T-001"]);
         assert.deepEqual(createdTitles, ["T-002 New task"]);
+        // Labels are listed, then the missing ones created, before any issue command.
+        assert.equal(ghCalls[0], "label list");
+        const firstLabelCreate = ghCalls.indexOf("label create");
+        const firstIssueCommand = ghCalls.findIndex((c) => c.startsWith("issue "));
+        assert.ok(firstLabelCreate !== -1 && firstLabelCreate < firstIssueCommand);
       }
     );
   });
@@ -992,6 +1074,7 @@ describe("PR #310 logic bugfix round", () => {
             if (cmd === "git" && args[0] === "fetch") return "";
             if (cmd === "git" && args[0] === "ls-tree") return "";
             if (cmd === "git" && args[0] === "ls-remote") return "";
+            if (cmd === "gh" && args[0] === "issue") return "[]";
             if (cmd === "gh" && args[0] === "pr") return "[]";
             if (cmd === "git" && args[0] === "rev-parse") return "deadbeef\n";
             if (cmd === "gh" && args[0] === "api") {
@@ -1101,6 +1184,7 @@ describe("PR #310 logic bugfix round", () => {
             });
           }
           if (cmd === "git" && args[0] === "ls-remote") return "";
+          if (cmd === "gh" && args[0] === "issue") return "[]";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
         };
@@ -1136,6 +1220,7 @@ describe("PR #310 logic bugfix round", () => {
             return makeCardMarkdown({ id: "T-001", priority: "P0", status: "todo", touches: '["a.ts"]' });
           }
           if (cmd === "git" && args[0] === "ls-remote") return "";
+          if (cmd === "gh" && args[0] === "issue") return "[]";
           if (cmd === "gh" && args[0] === "pr") return "[]";
           throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
         };
@@ -1152,7 +1237,7 @@ describe("PR #310 logic bugfix round", () => {
     );
   });
 
-  it("blocked status comes strictly from open PRs on task/* and never from issue labels", () => {
+  it("blocked status comes from the owner label on the linked Issue once a card is in flight", () => {
     const calledCommands = [];
     withTempTasksDir(
       {
@@ -1170,20 +1255,29 @@ describe("PR #310 logic bugfix round", () => {
           if (cmd === "git" && args[0] === "ls-tree") return "";
           if (cmd === "git" && args[0] === "ls-remote") return "";
           if (cmd === "gh" && args[0] === "pr") return "[]";
+          if (cmd === "gh" && args[0] === "issue") {
+            return JSON.stringify([{ title: "T-001 Sample task", labels: [{ name: "needs: owner" }] }]);
+          }
           throw new Error(`Unexpected: ${cmd} ${args.join(" ")}`);
         };
 
         const statusRes = runStatus({ cwd: rootDir, tasksDir, exec, out: () => {}, err: () => {} });
         assert.equal(statusRes.exitCode, 0);
+        // The Issue carries the label but nothing is in flight: still `todo`.
         assert.equal(statusRes.rows[0].status, "todo");
-        assert.equal(
-          calledCommands.some((c) => c.startsWith("gh issue")),
-          false
-        );
+        assert.ok(calledCommands.some((c) => c.startsWith("gh issue list")));
+
+        // The same labeled Issue with the branch in flight: `blocked`, and no WIP slot used.
+        const inFlightExec = (cmd, args) =>
+          cmd === "git" && args[0] === "ls-remote" ? "111\trefs/heads/task/T-001\n" : exec(cmd, args);
+        const inFlight = runStatus({ cwd: rootDir, tasksDir, exec: inFlightExec, out: () => {}, err: () => {} });
+        assert.equal(inFlight.rows[0].status, "blocked");
+        assert.equal(inFlight.wipCount, 0);
 
         const issueArgs = buildIssueCreateArgs(statusRes.rows[0].card, { repo: "Masar-X/Masar-x" });
         const bodyArg = issueArgs[issueArgs.indexOf("--body") + 1];
         assert.doesNotMatch(bodyArg, /blocked|changes status/i);
+        assert.ok(issueArgs.includes("needs: owner"));
       }
     );
   });

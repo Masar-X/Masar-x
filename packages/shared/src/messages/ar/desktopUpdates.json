@@ -1,7 +1,7 @@
 {
   "title": "يتوفر تحديث جديد",
   "description": "الإصدار {version} جاهز للتثبيت",
-  "install": "تثبيت وإعادة تشغيل",
+  "downloadFromReleases": "تنزيل التحديث من GitHub Releases",
   "later": "لاحقًا",
   "errorTitle": "فشل التحقق من التحديثات",
   "dismiss": "تجاهل",
