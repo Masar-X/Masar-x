@@ -297,7 +297,20 @@ vi.mock('electron-updater', () => {
 let tmpUserDataDir: string;
 let tmpResourcesDir: string;
 
-beforeAll(() => {
+// Track fire-and-forget Updater.checkOnStartup() promises started by
+// startMainProcess() so afterEach and the updates:check rate-limit test can
+// wait for them to settle. Without draining, an earlier test's async marker
+// IO can finish after the next test's checkForUpdates.mockClear(), resolving
+// vi.waitFor before the current test's Updater stamps lastCheckAt.
+const pendingStartupChecks = new Set<Promise<unknown>>();
+
+async function drainStartupChecks(): Promise<void> {
+  while (pendingStartupChecks.size > 0) {
+    await Promise.allSettled([...pendingStartupChecks]);
+  }
+}
+
+beforeAll(async () => {
   tmpUserDataDir = mkdtempSync(path.join(os.tmpdir(), 'masarx-test-userdata-'));
   tmpResourcesDir = mkdtempSync(path.join(os.tmpdir(), 'masarx-test-resources-'));
   const webAppDir = path.join(tmpResourcesDir, 'web', 'apps', 'web');
@@ -311,9 +324,23 @@ beforeAll(() => {
   // writePortSidecar writes port.json into userData; point app.getPath
   // at a real tmpdir so the write succeeds.
   mockApp.getPath = vi.fn().mockReturnValue(tmpUserDataDir);
+
+  const { Updater } = await import('../updater');
+  const origCheckOnStartup = Updater.prototype.checkOnStartup;
+  vi.spyOn(Updater.prototype, 'checkOnStartup').mockImplementation(function (this: InstanceType<typeof Updater>) {
+    const promise = origCheckOnStartup.call(this);
+    pendingStartupChecks.add(promise);
+    void promise.finally(() => pendingStartupChecks.delete(promise));
+    return promise;
+  });
 });
 
-afterAll(() => {
+afterEach(async () => {
+  await drainStartupChecks();
+});
+
+afterAll(async () => {
+  await drainStartupChecks();
   if (tmpUserDataDir) rmSync(tmpUserDataDir, { recursive: true, force: true });
   if (tmpResourcesDir) rmSync(tmpResourcesDir, { recursive: true, force: true });
 });
@@ -763,12 +790,11 @@ describe('T017 — Electron main process contract', () => {
     (autoUpdater as any).checkForUpdates.mockClear();
     const mod = await import('../index');
     await (mod as any).startMainProcess();
-    // Wait until the fire-and-forget startup check reached its
-    // checkForUpdates() call — it stamps lastCheckAt synchronously before
-    // awaiting, so the window is now guaranteed active.
-    await vi.waitFor(() => {
-      expect((autoUpdater as any).checkForUpdates).toHaveBeenCalled();
-    });
+    // Wait until the current test's fire-and-forget checkOnStartup() settles
+    // (earlier tests' startup checks were already drained in afterEach), so
+    // lastCheckAt is guaranteed stamped on this test's Updater instance.
+    await drainStartupChecks();
+    expect((autoUpdater as any).checkForUpdates).toHaveBeenCalledTimes(1);
 
     const handler = lastRegistered('updates:check');
     await expect(handler?.({}, undefined)).resolves.toEqual({ status: 'rate-limited' });
