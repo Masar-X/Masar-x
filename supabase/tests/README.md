@@ -12,8 +12,8 @@ runs inside transactions is rolled back.
 | Section | What | Behavior |
 |---|---|---|
 | 0 | Context + preflight | Fails if the connected role cannot `SET ROLE authenticated`. |
-| 1a | All 19 core baseline tables exist and have `relrowsecurity = true` | `RAISE EXCEPTION` naming any offender |
-| 1b | Dynamic sweep: **any** base table in `public` without RLS fails | Catches any migration that forgets RLS (all 49 baseline public tables, incl. `quiz_attempts` / `trw_access_codes`, are covered) |
+| 1 | Generic sweep over `pg_catalog`: **every** base/partitioned table in `public` must have RLS; the table count itself is asserted (zero tables fails) | `RAISE EXCEPTION` naming any offender; no hand-maintained list, so any migration that forgets RLS fails (incl. `quiz_attempts` / `trw_access_codes`) |
+| 1-negative | Self-test: a deliberately un-RLS'd table is created inside a `BEGIN ... ROLLBACK` block | Fails loudly if the sweep does **not** flag it |
 | 1c | `review_details` / `lectures_with_ratings` views are `security_invoker` | Owner-rights views would bypass base-table RLS |
 | 2 | Policy inventory (`tablename, policyname, cmd, roles`), ordered | Documentation output |
 | 3 | Positive/negative behavior tests as `authenticated` / `service_role` | See below; every block runs in `BEGIN ... ROLLBACK` |
@@ -108,8 +108,8 @@ seed supplies those fixtures.
 
 ```text
 NOTICE:  PREFLIGHT PASS: postgres can assume authenticated and service_role
-NOTICE:  SECTION 1a PASS: all 19 expected tables exist with RLS enabled
-NOTICE:  SECTION 1b PASS: no base table in schema public lacks RLS
+NOTICE:  SECTION 1 PASS: all <N> public tables verified with RLS enabled
+NOTICE:  SECTION 1-negative PASS: the sweep flags a public table without RLS as expected
 NOTICE:  SECTION 1c PASS: user-data views use security_invoker
 NOTICE:  3.1 profiles PASS: cross-user insert rejected as expected
 NOTICE:  3.8a password_reset_tokens PASS: invisible to authenticated
