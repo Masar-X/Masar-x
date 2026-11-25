@@ -1,6 +1,6 @@
 ## Card ID
 
-<!-- `T-XXX` (matching branch `task/T-XXX`) or `N/A` -->
+<!-- `T-XXX` (matching branch `task/T-XXX`) or `N/A`. Use `Refs #<issue>` instead of `Closes` when the card has `owner_action: true`. -->
 Closes #<issue> <!-- omit if no tracking issue -->
 
 ## Summary
@@ -38,7 +38,7 @@ Closes #<issue> <!-- omit if no tracking issue -->
 
 ## Owner actions needed
 
-<!-- Exact commands/settings for the owner if `owner_action: true` (or `None`). -->
+<!-- If the card has `owner_action: true`, link the Issue that carries the `needs: owner` checklist (or `None`). The steps themselves live on that Issue. -->
 
 ## Contributor checklist
 

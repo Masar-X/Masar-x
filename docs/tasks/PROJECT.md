@@ -1,6 +1,6 @@
 # GitHub Project Setup (Owner-run only)
 
-> **Owner-run only.** Agents must never run `gh project` setup commands or `pnpm tasks:sync-issues --apply`.
+> **Owner-run only.** `gh project` setup commands and `pnpm tasks:sync-issues --apply` are run by the repository owner.
 
 ## 1. Create & Link Project
 
@@ -21,8 +21,8 @@ gh project view <PROJECT_NUMBER> --owner Masar-X --web
 ## 3. Sync Task Cards to Issues
 
 ```bash
-pnpm tasks:sync-issues          # dry-run: preview gh issue create commands
-pnpm tasks:sync-issues --apply  # owner-only: create GitHub issues for cards
+pnpm tasks:sync-issues          # dry-run: preview label + gh issue create commands
+pnpm tasks:sync-issues --apply  # owner-only: create missing labels and GitHub issues
 ```
 
 Add created issues to the project board (`gh project item-add <PROJECT_NUMBER> --owner Masar-X --url <ISSUE_URL>`).
