@@ -52,6 +52,7 @@ Publish a concise 1-page `docs/ARCHITECTURE.md` defining Masar X's client/server
 pnpm --filter web lint (tail): "✖ 36 problems (0 errors, 36 warnings)" — exit 0
 pnpm --filter web typecheck: no output — exit 0
 node scripts/tasks.mjs lint: "tasks:lint OK (24 card(s) checked)" — exit 0
+gh pr checks 344 --watch --interval 20: all 17 checks pass — exit 0 (ESLint, test, next build, e2e, db-verify, mobile, workspaces, gitleaks-artifacts, deno-check, docs-lint, translations, workflow-lint, ai-endpoint-grep, deps-audit (critical gate), fallow-audit (report-only), Vercel, Vercel Preview Comments)
 ```
 
 Ratchet negative probes (reverted afterwards: probe files deleted, allowlist entry restored — 48 uncommented entries):
