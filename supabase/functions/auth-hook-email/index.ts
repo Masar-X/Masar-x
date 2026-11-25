@@ -3,18 +3,18 @@
  * GoTrue send_email hook — renders and sends the platform's transactional
  * emails via Brevo.
  *
- * Hardening (review 2026-11-07 P0.2 "open relay": any caller with the public
- * anon key could trigger arbitrary emails with an attacker-controlled
- * redirect, and the default branch injected it unencoded into the HTML):
- *   1. Hook JWT verification — when SEND_EMAIL_HOOK_SECRET is configured
- *      (the base64 secret from Supabase Auth → Hooks → send_email), the
- *      `Authorization: Bearer <jwt>` GoTrue supplies must carry a valid
- *      HS256 signature; anything else is rejected before any processing
- *      (fail-closed).
- *   2. Restricted mode — while the secret is not configured, the function
- *      still refuses unknown email actions, allowlists the redirect origin,
- *      rate-limits per recipient, and logs a loud warning on every call so
- *      the gap stays visible. Deploying either way never breaks live email.
+ * Hardening (review 2026-11-07 P0.2 "open relay" + T-004 fail-closed gate):
+ *   1. Fail-closed secret check — when SEND_EMAIL_HOOK_SECRET is unset or
+ *      empty, every request is rejected with HTTP 500 (`Auth hook misconfigured`)
+ *      unless explicitly running in local development (`ENVIRONMENT === 'development'`).
+ *   2. Standard Webhooks signature verification — the official Supabase
+ *      send-email-hook contract (docs updated 2026-10-22; supabase/auth#2499
+ *      confirms the legacy Authorization JWT is not reliably attached) signs
+ *      each request with `v1,<hmac>` over `${webhook-id}.${webhook-timestamp}.${body}`,
+ *      keyed by the base64 secret behind the dashboard's `v1,whsec_...` value.
+ *      Missing or invalid signatures are rejected with HTTP 401.
+ *   3. Input & quota guards — refuses unknown email actions, allowlists the
+ *      redirect origin, and rate-limits per recipient.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { buildCorsHeaders } from '../_shared/cors.ts';
@@ -26,10 +26,6 @@ const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 const BREVO_SENDER_EMAIL = Deno.env.get('BREVO_SENDER_EMAIL') || 'masarx.eg@gmail.com';
 const BREVO_SENDER_NAME = Deno.env.get('BREVO_SENDER_NAME') || 'مسار X - منصة طلاب';
-
-// GoTrue signs the hook call as `Authorization: Bearer <jwt>` (HS256, key =
-// the base64 hook secret from the Auth dashboard). Empty = restricted mode.
-const SEND_EMAIL_HOOK_SECRET = Deno.env.get('SEND_EMAIL_HOOK_SECRET') ?? '';
 
 const ALLOWED_EMAIL_ACTIONS = new Set([
   'signup',
@@ -46,24 +42,60 @@ const base64ToBytes = (b64: string): Uint8Array => {
   return bytes;
 };
 
-/** Verify the GoTrue hook JWT (HS256 over `header.payload`). */
-const verifyHookJwt = async (req: Request): Promise<boolean> => {
-  const header = req.headers.get('authorization') ?? '';
-  const match = /^Bearer (.+)$/.exec(header.trim());
-  if (!match) return false;
-  const parts = match[1].split('.');
-  if (parts.length !== 3) return false;
+/**
+ * Verify the Supabase send_email hook per the Standard Webhooks contract
+ * (dependency-free Web Crypto equivalent of standardwebhooks@1.0.0.verify):
+ * strip the optional `v1,whsec_` prefix from the dashboard secret, HMAC-SHA256
+ * over `${webhook-id}.${webhook-timestamp}.${rawBody}`, accept any `v1,`
+ * signature listed in `webhook-signature` (each entry guarded independently —
+ * GoTrue joins several with ", "), and reject replays outside the 5-minute
+ * timestamp tolerance.
+ */
+const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+const WHSEC_PREFIX = 'v1,whsec_';
+
+const verifyStandardWebhook = async (
+  req: Request,
+  hookSecret: string,
+  rawBody: string,
+): Promise<boolean> => {
+  const id = req.headers.get('webhook-id') ?? '';
+  const timestampHeader = req.headers.get('webhook-timestamp') ?? '';
+  const signatureHeader = req.headers.get('webhook-signature') ?? '';
+  if (!id || !timestampHeader || !signatureHeader) return false;
+  const timestamp = Number(timestampHeader);
+  if (!Number.isFinite(timestamp)) return false;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSeconds - timestamp) > WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS) return false;
   try {
+    let secretB64 = hookSecret.startsWith(WHSEC_PREFIX)
+      ? hookSecret.slice(WHSEC_PREFIX.length)
+      : hookSecret;
+    secretB64 = secretB64.replace(/-/g, '+').replace(/_/g, '/');
+    const secretPadded = secretB64.padEnd(secretB64.length + ((4 - (secretB64.length % 4)) % 4), '=');
     const key = await crypto.subtle.importKey(
       'raw',
-      base64ToBytes(SEND_EMAIL_HOOK_SECRET).buffer as ArrayBuffer,
+      base64ToBytes(secretPadded).buffer as ArrayBuffer,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['verify'],
     );
-    const sig = base64ToBytes(parts[2].replace(/-/g, '+').replace(/_/g, '/'));
-    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    return await crypto.subtle.verify('HMAC', key, sig, data);
+    const signedContent = new TextEncoder().encode(`${id}.${timestampHeader}.${rawBody}`);
+    for (const part of signatureHeader.split(/\s+/).filter(Boolean)) {
+      // GoTrue joins several `v1,` entries with ", " (hookshttp.go); a
+      // whitespace split leaves the separator comma at the end of an entry.
+      const entry = part.replace(/,+$/, '');
+      if (!entry.startsWith('v1,')) continue;
+      try {
+        const sigB64 = entry.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+        const sigPadded = sigB64.padEnd(sigB64.length + ((4 - (sigB64.length % 4)) % 4), '=');
+        const ok = await crypto.subtle.verify('HMAC', key, base64ToBytes(sigPadded), signedContent);
+        if (ok) return true;
+      } catch {
+        // Malformed entry: skip it, keep verifying the remaining signatures.
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -92,22 +124,30 @@ serve(async (req) => {
   }
 
   try {
-    if (!BREVO_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing BREVO_API_KEY' }), {
-        status: 500,
-        headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
-      });
-    }
+    // Standard Webhooks: GoTrue signs each hook call with `v1,<hmac>` over
+    // `${webhook-id}.${webhook-timestamp}.${body}` (key = the base64 secret
+    // behind the dashboard's `v1,whsec_...` value). Fail closed unless
+    // explicitly running in local development.
+    const hookSecret = (Deno.env.get('SEND_EMAIL_HOOK_SECRET') ?? '').trim();
+    const isLocalDev = Deno.env.get('ENVIRONMENT') === 'development';
+    const rawBody = await req.text();
 
-    if (!SEND_EMAIL_HOOK_SECRET) {
+    if (!hookSecret) {
+      if (!isLocalDev) {
+        console.error('[auth-hook-email] SEND_EMAIL_HOOK_SECRET is not configured — failing closed');
+        return new Response(JSON.stringify({ error: 'Auth hook misconfigured' }), {
+          status: 500,
+          headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
+        });
+      }
       console.warn(
-        '[auth-hook-email] SEND_EMAIL_HOOK_SECRET not configured — RESTRICTED mode ' +
-        '(signature unverified; set the Auth hook secret and this env var to close the relay fully)'
+        '[auth-hook-email] SEND_EMAIL_HOOK_SECRET not configured — local development fallback ' +
+        '(signature unverified; set SEND_EMAIL_HOOK_SECRET to test Standard Webhooks verification)'
       );
     } else {
-      const signatureOk = await verifyHookJwt(req);
+      const signatureOk = await verifyStandardWebhook(req, hookSecret, rawBody);
       if (!signatureOk) {
-        console.warn('[auth-hook-email] rejected: hook JWT verification failed');
+        console.warn('[auth-hook-email] rejected: Standard Webhooks signature verification failed');
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
@@ -115,7 +155,14 @@ serve(async (req) => {
       }
     }
 
-    const payload = await req.json();
+    if (!BREVO_API_KEY) {
+      return new Response(JSON.stringify({ error: 'Missing BREVO_API_KEY' }), {
+        status: 500,
+        headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
+      });
+    }
+
+    const payload = JSON.parse(rawBody);
     const { user, email_data } = payload;
     const { token_hash, redirect_to, email_action_type } = email_data ?? {};
 
