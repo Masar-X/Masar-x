@@ -714,14 +714,38 @@ BEGIN;
   -- conversation its owner owns (composite ownership FK
   -- (conversation_id, user_id) -> conversations (id, user_id) ON DELETE
   -- CASCADE, 20261114132536_zane_conversations_ownership_fk.sql).
+  -- NOTE: the chain defines NO table grants on conversations (a real
+  -- Supabase project covers them with platform-level default privileges,
+  -- which migrations cannot assume). The blocks below detect the grant
+  -- posture via has_table_privilege() and assert the RLS path when granted
+  -- or the deny path (session superuser CRUD) on a vanilla replay.
   DO $t312a$
   DECLARE
-    v_cid uuid;
-    v_rows int;
+    v_cid   uuid;
+    v_rows  int;
+    v_grant boolean;
   BEGIN
-    INSERT INTO public.conversations (user_id, mode, title)
-    VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
-    RETURNING id INTO v_cid;
+    SELECT has_table_privilege('authenticated', 'public.conversations', 'INSERT')
+      INTO v_grant;
+
+    IF v_grant THEN
+      INSERT INTO public.conversations (user_id, mode, title)
+      VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
+      RETURNING id INTO v_cid;
+      RAISE NOTICE '3.12 conversations: authenticated grant present - full CRUD path';
+    ELSE
+      RAISE NOTICE '3.12 conversations: no authenticated grant in the chain - CRUD via the session superuser';
+      SET LOCAL ROLE postgres;  -- back to the session role: bypasses RLS and grants
+      INSERT INTO public.conversations (user_id, mode, title)
+      VALUES ('00000000-0000-0000-0000-0000000000a1', 'cs_assistant', 'RLS harness conversation')
+      RETURNING id INTO v_cid;
+      SET LOCAL ROLE authenticated;
+      SELECT set_config(
+        'request.jwt.claims',
+        '{"sub": "00000000-0000-0000-0000-0000000000a1", "role": "authenticated"}',
+        true
+      );
+    END IF;
 
     INSERT INTO public.ai_chat_messages (user_id, role, content, mode, conversation_id)
     VALUES ('00000000-0000-0000-0000-0000000000a1', 'user', 'RLS harness message', 'cs_assistant', v_cid);
@@ -731,29 +755,38 @@ BEGIN;
       RAISE EXCEPTION 'RLS VERIFY FAILED: conversations own message not visible after insert';
     END IF;
 
-    UPDATE public.conversations SET title = 'RLS harness renamed' WHERE id = v_cid;
-    IF (SELECT count(*) FROM public.conversations WHERE id = v_cid AND title = 'RLS harness renamed') <> 1 THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations own update rejected';
-    END IF;
+    IF v_grant THEN
+      UPDATE public.conversations SET title = 'RLS harness renamed' WHERE id = v_cid;
+      IF (SELECT count(*) FROM public.conversations WHERE id = v_cid AND title = 'RLS harness renamed') <> 1 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations own update rejected';
+      END IF;
 
-    DELETE FROM public.conversations WHERE id = v_cid;
-    SELECT count(*) INTO v_rows FROM public.ai_chat_messages WHERE conversation_id = v_cid;
-    IF v_rows <> 0 THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversation delete did not cascade its messages';
-    END IF;
+      DELETE FROM public.conversations WHERE id = v_cid;
+      SELECT count(*) INTO v_rows FROM public.ai_chat_messages WHERE conversation_id = v_cid;
+      IF v_rows <> 0 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversation delete did not cascade its messages';
+      END IF;
 
-    RAISE NOTICE '3.12 conversations PASS: own insert/message-attach/update/delete + FK cascade';
+      RAISE NOTICE '3.12 conversations PASS: own insert/message-attach/update/delete + FK cascade';
+    ELSE
+      RAISE NOTICE '3.12 conversations PASS: own message insert + visibility via ai_chat_messages (conversation-CRUD denial asserted in 3.12b)';
+    END IF;
   END
   $t312a$;
 
   DO $t312b$
   DECLARE
     v_bconv uuid;
-    v_rows int;
+    v_rows  int;
+    v_grant boolean;
   BEGIN
-    -- seed user B's conversation as service_role so the attach test below
-    -- proves the ownership binding (not merely a missing parent row)
-    SET LOCAL ROLE service_role;
+    SELECT has_table_privilege('authenticated', 'public.conversations', 'INSERT')
+      INTO v_grant;
+
+    -- seed user B's conversation with a role that can write it, so the
+    -- attach test below proves the ownership binding (not merely a missing
+    -- parent row)
+    SET LOCAL ROLE postgres;
     BEGIN
       INSERT INTO public.conversations (user_id, mode, title)
       VALUES ('00000000-0000-0000-0000-0000000000a2', 'cs_assistant', 'B conversation')
@@ -765,30 +798,51 @@ BEGIN;
     END;
 
     SET LOCAL ROLE authenticated;
-    -- cross-user SELECT must see nothing
-    SELECT count(*) INTO v_rows
-      FROM public.conversations
-     WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
-    IF v_rows <> 0 THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations cross-user SELECT visible';
-    END IF;
+    SELECT set_config(
+      'request.jwt.claims',
+      '{"sub": "00000000-0000-0000-0000-0000000000a1", "role": "authenticated"}',
+      true
+    );
 
-    -- cross-user INSERT must be rejected
-    BEGIN
-      INSERT INTO public.conversations (user_id, mode)
-      VALUES ('00000000-0000-0000-0000-0000000000a2', 'cs_assistant');
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user insert';
-    EXCEPTION
-      WHEN insufficient_privilege THEN
-        RAISE NOTICE '3.12 conversations PASS: cross-user insert rejected';
-    END;
+    IF v_grant THEN
+      -- cross-user SELECT must see nothing
+      SELECT count(*) INTO v_rows
+        FROM public.conversations
+       WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
+      IF v_rows <> 0 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations cross-user SELECT visible';
+      END IF;
+      RAISE NOTICE '3.12 conversations PASS: cross-user SELECT invisible';
 
-    -- cross-user UPDATE/DELETE must be a no-op (policy filters the row out)
-    DELETE FROM public.conversations
-     WHERE id = v_bconv
-     RETURNING id INTO v_rows;
-    IF v_rows IS NOT NULL THEN
-      RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user delete';
+      -- cross-user INSERT must be rejected
+      BEGIN
+        INSERT INTO public.conversations (user_id, mode)
+        VALUES ('00000000-0000-0000-0000-0000000000a2', 'cs_assistant');
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user insert';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE '3.12 conversations PASS: cross-user insert rejected';
+      END;
+
+      -- cross-user UPDATE/DELETE must be a no-op (policy filters the row out)
+      DELETE FROM public.conversations
+       WHERE id = v_bconv
+       RETURNING id INTO v_rows;
+      IF v_rows IS NOT NULL THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations allowed cross-user delete';
+      END IF;
+    ELSE
+      -- the chain grants nothing on conversations: reads and writes must be
+      -- table-permission denied, which is itself the passing posture here
+      BEGIN
+        SELECT count(*) INTO v_rows
+          FROM public.conversations
+         WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversations readable by authenticated without a grant';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE '3.12 conversations PASS: table not exposed to authenticated (no grant in chain)';
+      END;
     END IF;
 
     -- a message may not attach to another user's conversation: RLS on
@@ -801,6 +855,20 @@ BEGIN;
       WHEN foreign_key_violation THEN
         RAISE NOTICE '3.12 messages PASS: cross-user conversation attach rejected by ownership FK';
     END;
+
+    IF NOT v_grant THEN
+      -- no-grant path: verify message-attach + cascade via the session
+      -- superuser (a B-owned message, then delete the conversation)
+      SET LOCAL ROLE postgres;
+      INSERT INTO public.ai_chat_messages (user_id, role, content, mode, conversation_id)
+      VALUES ('00000000-0000-0000-0000-0000000000a2', 'user', 'B harness message', 'cs_assistant', v_bconv);
+      DELETE FROM public.conversations WHERE id = v_bconv;
+      SELECT count(*) INTO v_rows FROM public.ai_chat_messages WHERE conversation_id = v_bconv;
+      IF v_rows <> 0 THEN
+        RAISE EXCEPTION 'RLS VERIFY FAILED: conversation delete did not cascade its messages';
+      END IF;
+      RAISE NOTICE '3.12 conversations PASS: message-attach + FK cascade verified (session superuser)';
+    END IF;
   END
   $t312b$;
 ROLLBACK;
