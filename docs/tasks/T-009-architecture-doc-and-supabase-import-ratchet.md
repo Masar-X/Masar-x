@@ -2,7 +2,7 @@
 id: T-009
 title: "Add docs/ARCHITECTURE.md and ESLint browser-Supabase import ratchet"
 priority: P1
-status: todo
+status: done
 depends_on: []
 touches:
   - "docs/ARCHITECTURE.md"
@@ -17,7 +17,7 @@ estimate: 0.5d
 
 - [VERIFIED] `docs/ARCHITECTURE.md` does not exist on disk; only the 27-line summary `docs/agents/references/04-architecture.md:1-27` exists.
 - [VERIFIED] `apps/web/eslint.config.mjs:82-104` already defines `no-restricted-imports` at `"error"` severity for `openai` and `@anthropic-ai/sdk`, with no restriction on browser Supabase client imports.
-- [VERIFIED] In `apps/web/src` (390 non-test `.ts`/`.tsx` files), **48** non-test files import a browser Supabase client (**41** import `@/lib/supabase` or relative `.../lib/supabase` and **7** import `@/lib/supabase/client`), not 38 as the prior audit stated.
+- [VERIFIED] In `apps/web/src` (390 non-test `.ts`/`.tsx` files), **48** non-test files import a browser Supabase client, not 38 as the prior audit stated. (Breakdown corrected in T-009: the audit's "41 import `@/lib/supabase` or relative `.../lib/supabase`" missed 4 bare-relative `./supabase` imports from `src/lib` itself (`analytics.ts`, `analyticsHelpers.ts`, `cloudinary.ts`, `quiz.ts`). Real split: 20 alias `@/lib/supabase` + 17 relative `.../lib/supabase` + 7 `@/lib/supabase/client` + 4 bare-relative `./supabase` = 48. The 48-file baseline was re-computed by ESLint itself in this card; see `apps/web/eslint-supabase-allowlist.mjs`.)
 - [VERIFIED] Across all **42** `apps/web/src/app/**/page.tsx` files, **28/42** are `"use client"` pages, **8** `page.tsx` files import a browser Supabase client (`courses/[courseId]/page.tsx:8`, `edit-summary/page.tsx:8`, `login/page.tsx:10`, `profile/page.tsx:25`, `reset-password/page.tsx:8`, `subjects/[subject]/page.tsx:7`, `summaries/[summaryId]/page.tsx:19`, `non-academic/[subject]/page.tsx:9`), and **2** import `@/lib/supabase/server` (`news/page.tsx:2`, `quiz-play/[quizId]/page.tsx:3`) — **10** pages total import `@/lib/supabase*` (prior audit claimed 15). **8** files under `apps/web/src/components/` also import `@/lib/supabase` (or relative `../lib/supabase`).
 - [VERIFIED] `profile/page.tsx:25` (`T-011b`) and `courses/[courseId]/page.tsx:8` (`T-011c`) are behavior-preserving split cards and intentionally keep their browser Supabase imports until separate burn-down cards.
 
@@ -39,11 +39,32 @@ Publish a concise 1-page `docs/ARCHITECTURE.md` defining Masar X's client/server
 
 ## Acceptance criteria
 
-- [ ] `test -f docs/ARCHITECTURE.md && wc -l docs/ARCHITECTURE.md` — file exists and is <= 120 lines
-- [ ] `pnpm --filter web lint` — exits 0 with zero errors using `apps/web/eslint-supabase-allowlist.mjs` (48-file ESLint-computed baseline)
-- [ ] `pnpm --filter web typecheck` — exits 0
+- [x] `test -f docs/ARCHITECTURE.md && wc -l docs/ARCHITECTURE.md` — file exists and is <= 120 lines
+  evidence: `test -f docs/ARCHITECTURE.md && wc -l docs/ARCHITECTURE.md` (Git bash) -> "104 docs/ARCHITECTURE.md", exit 0
+- [x] `pnpm --filter web lint` — exits 0 with zero errors using `apps/web/eslint-supabase-allowlist.mjs` (48-file ESLint-computed baseline)
+  evidence: `pnpm --filter web lint` -> exit 0, "✖ 36 problems (0 errors, 36 warnings)" under --max-warnings=52; the ratchet reports no errors because all 48 baseline files are allowlisted
+- [x] `pnpm --filter web typecheck` — exits 0
+  evidence: `pnpm --filter web typecheck` (tsc -p tsconfig.json --noEmit) -> exit 0, no output
 
 ## Evidence
+
+```
+pnpm --filter web lint (tail): "✖ 36 problems (0 errors, 36 warnings)" — exit 0
+pnpm --filter web typecheck: no output — exit 0
+node scripts/tasks.mjs lint: "tasks:lint OK (24 card(s) checked)" — exit 0
+```
+
+Ratchet negative probes (reverted afterwards: probe files deleted, allowlist entry restored — 48 uncommented entries):
+
+```
+pnpm --filter web exec eslint src/zz-ratchet-probe.ts src/lib/zz-ratchet-probe-rel.ts src/hooks/useNews.ts
+  -> exit 1, 3 errors:
+  - src/zz-ratchet-probe.ts:1:1          '@/lib/supabase' import is restricted   (new un-allowlisted file)
+  - src/lib/zz-ratchet-probe-rel.ts:1:1  './supabase' import is restricted       (new un-allowlisted file, bare relative spelling)
+  - src/hooks/useNews.ts:2:1             '../lib/supabase' import is restricted  (allowlist entry temporarily commented out)
+```
+
+First lint run with the gitignore-style group pattern `@/lib/supabase` flagged the sanctioned `@/lib/supabase/server` / `@/lib/supabase/admin` imports (15 errors — gitignore patterns match everything under the path), so the shipped rule uses anchored regex patterns instead (see `apps/web/eslint.config.mjs`).
 
 ## Rollback
 
