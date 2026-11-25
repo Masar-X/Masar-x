@@ -51,8 +51,6 @@ export const REQUIRED_SECTIONS = Object.freeze([
  * owner.
  */
 export const OWNER_LABEL = "needs: owner";
-/** Former names of that label, still honored on issues and on open PRs. */
-export const LEGACY_OWNER_LABELS = Object.freeze(["blocked", "owner-action"]);
 
 /** Card areas that get an `area: <name>` label. */
 export const AREAS = Object.freeze(["web", "desktop", "mobile", "shared", "supabase", "ci", "docs"]);
@@ -70,10 +68,9 @@ export const LABEL_SCHEME = Object.freeze([
   ...AREAS.map((area) => ({ name: `area: ${area}`, color: "6E7781", description: `Area: ${area}` })),
 ]);
 
-/** Label names (current or former) that mark a card as waiting on the owner. */
+/** True for the owner label, whatever its case or surrounding whitespace. */
 export function isOwnerWaitingLabel(label) {
-  const lower = String(label ?? "").trim().toLowerCase();
-  return lower === OWNER_LABEL || LEGACY_OWNER_LABELS.includes(lower);
+  return String(label ?? "").trim().toLowerCase() === OWNER_LABEL;
 }
 
 const TASK_ID_RE = /^T-\d{3,}[a-z]?$/;
@@ -426,12 +423,8 @@ export function deriveCardStatus(
 
   const prs = openPrsByTaskId.get(card.id) ?? [];
   const hasBranch = remoteBranches.has(card.id);
-  // `needs: owner` belongs on the Issue; on a PR only the former names count.
-  const waitingOnOwner =
-    prs.some((pr) =>
-      pr.labels.some((lbl) => LEGACY_OWNER_LABELS.includes(String(lbl ?? "").trim().toLowerCase()))
-    ) ||
-    (issueLabelsByTaskId?.get(card.id) ?? []).some(isOwnerWaitingLabel);
+  // The owner label lives on the card's Issue; a label on the PR is ignored.
+  const waitingOnOwner = (issueLabelsByTaskId?.get(card.id) ?? []).some(isOwnerWaitingLabel);
 
   // An owner label alone never changes status: only a card already in flight
   // (branch or PR) can be `blocked`, and that status never prevents a merge.

@@ -164,7 +164,7 @@ describe("frontmatter parsing", () => {
 });
 
 describe("status derivation and dependency resolution", () => {
-  it("derives done, blocked, review, doing, waiting-deps, and todo accurately", () => {
+  it("derives done, review, doing, waiting-deps, and todo accurately", () => {
     const cards = [
       { id: "T-001", priority: "P0", status: "done", depends_on: [], touches: ["a"] },
       { id: "T-002", priority: "P0", status: "todo", depends_on: ["T-001"], touches: ["b"] },
@@ -194,7 +194,7 @@ describe("status derivation and dependency resolution", () => {
           headRefName: "task/T-006",
           number: 11,
           url: "https://github.com/Masar-X/Masar-x/pull/11",
-          labels: [{ name: "owner-action" }],
+          labels: [],
           author: { login: "bob" },
         },
       ])
@@ -206,7 +206,7 @@ describe("status derivation and dependency resolution", () => {
     assert.equal(deriveCardStatus(cards[2], state), "waiting-deps"); // T-002 is not done
     assert.equal(deriveCardStatus(cards[3], state), "doing"); // remote branch, no PR
     assert.equal(deriveCardStatus(cards[4], state), "review"); // open PR without an owner label
-    assert.equal(deriveCardStatus(cards[5], state), "blocked"); // open PR with a former owner label
+    assert.equal(deriveCardStatus(cards[5], state), "review"); // open PR, no owner label on its Issue
   });
 
   it("blocked needs an in-flight card and an owner label on its Issue; the label alone changes nothing", () => {
@@ -245,16 +245,6 @@ describe("status derivation and dependency resolution", () => {
       ),
     };
     assert.equal(deriveCardStatus(cards[1], withPr), "review"); // `needs: owner` belongs on the Issue, not the PR
-
-    const withLegacyPr = {
-      ...withBranch,
-      openPrsByTaskId: parseOpenPrs(
-        JSON.stringify([
-          { headRefName: "task/T-002", number: 20, url: "", labels: [{ name: "owner-action" }] },
-        ])
-      ),
-    };
-    assert.equal(deriveCardStatus(cards[1], withLegacyPr), "blocked"); // a former label still on the PR counts
   });
 
   it("sorts P0 -> P1 -> P2 then ID ascending", () => {
@@ -1001,9 +991,12 @@ describe("PR #310 fixup: sub-cards and blocked PR touch isolation", () => {
                 headRefName: "task/T-003",
                 number: 11,
                 url: "https://github.com/Masar-X/Masar-x/pull/11",
-                labels: [{ name: "blocked" }, { name: "owner-action" }],
+                labels: [],
               },
             ])
+          ),
+          issueLabelsByTaskId: parseOpenIssues(
+            JSON.stringify([{ title: "T-003 Sample task", labels: [{ name: "needs: owner" }] }])
           ),
         };
 
