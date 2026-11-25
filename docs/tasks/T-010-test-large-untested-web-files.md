@@ -2,7 +2,7 @@
 id: T-010
 title: "Add unit tests for top untested web source files"
 priority: P1
-status: todo
+status: done
 depends_on: []
 touches:
   - "apps/web/src/app/[locale]/profile/__tests__/page.test.tsx"
@@ -61,11 +61,16 @@ Establish behavioral characterization tests for the highest-risk untested large 
 
 ## Acceptance criteria
 
-- [ ] `pnpm --filter web test` — exits 0 with new `__tests__/*.test.tsx` files passing for at least `profile/page.tsx`, `courses/[courseId]/page.tsx`, `subjects/[subject]/page.tsx`, `NewsClient.tsx`, `edit-summary/page.tsx`, and `AppNav.tsx`
-- [ ] `pnpm --filter web lint` — exits 0
-- [ ] `pnpm --filter web typecheck` — exits 0
+- [x] `pnpm --filter web test` — exits 0 with new `__tests__/*.test.tsx` files passing for at least `profile/page.tsx`, `courses/[courseId]/page.tsx`, `subjects/[subject]/page.tsx`, `NewsClient.tsx`, `edit-summary/page.tsx`, and `AppNav.tsx`
+  evidence: `pnpm --filter web test` -> `Test Files  113 passed (113)` / `Tests  1287 passed (1287)` / `Duration  35.37s`; the 6 new suites alone: `Test Files  6 passed (6)` / `Tests  72 passed (72)`
+- [x] `pnpm --filter web lint` — exits 0
+  evidence: `pnpm --filter web lint` -> `36 problems (0 errors, 36 warnings)`, identical to the pre-change baseline on this worktree (budget `--max-warnings=52`)
+- [x] `pnpm --filter web typecheck` — exits 0
+  evidence: `pnpm --filter web typecheck` -> `tsc -p tsconfig.json --noEmit` exits 0 with no diagnostics
 
 ## Evidence
+
+Scope (step 3): the six step-1 priorities are covered - `profile/page.tsx` (15 tests), `subjects/[subject]/page.tsx` (12), `courses/[courseId]/page.tsx` (11), `NewsClient.tsx` (11), `edit-summary/page.tsx` (11), `AppNav.tsx` (12) - auth gating, loading/error states and the primary mutations run against the real page code with only children/hooks/transport mocked (`@/test/mocks/next-intl` + `createSupabaseMock` conventions). The remaining 7 files from the audit (`quiz-attempts/page.tsx`, `admin-dashboard/page.tsx`, `AdminAnalyticsPage.tsx`, `ai-assistant/page.tsx`, `summaries/[summaryId]/page.tsx`, `AdminOverviewTab.tsx`, `Sidebar.tsx`) are deferred to follow-up sub-cards per step 3.
 
 ## Rollback
 
