@@ -20,7 +20,7 @@ if (handlers.length === 0) throw new Error("serve() handler was not captured");
 const handleAuthHookEmail = handlers[handlers.length - 1]!;
 
 const BREVO_URL = "https://api.brevo.com/v3/smtp/email";
-// 32-byte base64-encoded secret matching GoTrue's SEND_EMAIL_HOOK_SECRET format.
+// 32-byte base64-encoded secret; the dashboard wraps it as `v1,whsec_<base64>`.
 const TEST_HOOK_SECRET_B64 = btoa("0123456789abcdef0123456789abcdef");
 const WRONG_HOOK_SECRET_B64 = btoa("fedcba9876543210fedcba9876543210");
 
@@ -121,6 +121,38 @@ async function signHookJwt(
   );
   return `${signingInput}.${bytesToBase64Url(new Uint8Array(sig))}`;
 }
+function stripWhsecPrefix(secret: string): string {
+  return secret.startsWith("v1,whsec_") ? secret.slice("v1,whsec_".length) : secret;
+}
+
+/**
+ * Standard Webhooks signing helper (spec: standard-webhooks/standard-webhooks).
+ * Signs `${id}.${timestamp}.${rawBody}` with HMAC-SHA256 keyed by the base64
+ * secret (after stripping the optional `v1,whsec_` prefix) and emits the
+ * `webhook-id` / `webhook-timestamp` / `webhook-signature` header set the
+ * Supabase send_email hook sends per the official docs.
+ */
+async function signStandardWebhook(
+  secretRaw: string,
+  rawBody: string,
+  opts: { id?: string; timestampSeconds?: number } = {},
+): Promise<{ "webhook-id": string; "webhook-timestamp": string; "webhook-signature": string }> {
+  const id = opts.id ?? `msg_${bytesToBase64Url(crypto.getRandomValues(new Uint8Array(12)))}`;
+  const timestamp = String(opts.timestampSeconds ?? Math.floor(Date.now() / 1000));
+  const normalized = stripWhsecPrefix(secretRaw).replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    base64ToBytes(padded).buffer as ArrayBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signedContent = `${id}.${timestamp}.${rawBody}`;
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedContent));
+  const signature = `v1,${btoa(String.fromCharCode(...new Uint8Array(mac)))}`;
+  return { "webhook-id": id, "webhook-timestamp": timestamp, "webhook-signature": signature };
+}
 
 async function withEnv(
   vars: Record<string, string | undefined>,
@@ -160,6 +192,40 @@ function makeReq(
     method: opts.method ?? "POST",
     headers,
     body: opts.method === "OPTIONS" ? null : JSON.stringify(body),
+  });
+}
+/**
+ * Build a POST request carrying Standard Webhooks headers over the exact raw
+ * body it sends (signature must cover the bytes GoTrue would transmit).
+ */
+async function makeSignedReq(
+  secretRaw: string,
+  opts: {
+    redirectTo?: string;
+    timestampSeconds?: number;
+    signatureValue?: string;
+    tamperBody?: boolean;
+    omitHeaders?: boolean;
+  } = {},
+): Promise<Request> {
+  const payload = validPayload(opts.redirectTo ?? "https://masarx.vercel.app/ar/auth/callback");
+  const rawBody = JSON.stringify(payload);
+  const headers = await signStandardWebhook(secretRaw, rawBody, {
+    timestampSeconds: opts.timestampSeconds,
+  });
+  const reqHeaders = new Headers({ "content-type": "application/json" });
+  if (!opts.omitHeaders) {
+    reqHeaders.set("webhook-id", headers["webhook-id"]);
+    reqHeaders.set("webhook-timestamp", headers["webhook-timestamp"]);
+    reqHeaders.set("webhook-signature", opts.signatureValue ?? headers["webhook-signature"]);
+  }
+  const sentBody = opts.tamperBody
+    ? JSON.stringify({ ...payload, user: { email: "attacker@example.com" } })
+    : rawBody;
+  return new Request("https://functions.local/auth-hook-email", {
+    method: "POST",
+    headers: reqHeaders,
+    body: sentBody,
   });
 }
 
@@ -244,69 +310,67 @@ Deno.test("handler: local dev fallback still enforces redirect allowlist (400)",
 });
 
 // ---------------------------------------------------------------------------
-// JWT verification when SEND_EMAIL_HOOK_SECRET is configured
+// Standard Webhooks signature verification when SEND_EMAIL_HOOK_SECRET is configured
 // ---------------------------------------------------------------------------
 
-Deno.test("handler: missing Authorization header when secret is set -> 401", async () => {
+Deno.test("handler: missing webhook-* headers when secret is set -> 401", async () => {
   await withEnv(
     { SEND_EMAIL_HOOK_SECRET: TEST_HOOK_SECRET_B64, ENVIRONMENT: undefined },
     async () => {
       setScenario(baseScenario());
       stubFetch();
-      const res = await handleAuthHookEmail(makeReq(validPayload()));
+      const res = await handleAuthHookEmail(await makeSignedReq(TEST_HOOK_SECRET_B64, { omitHeaders: true }));
       const body = await res.json() as { error?: string };
       assert(res.status === 401, `expected 401, got ${res.status}`);
       assert(body.error === "Unauthorized", `unexpected error: ${JSON.stringify(body)}`);
-      assert(brevoCalls.length === 0, "no Brevo email sent without JWT");
+      assert(brevoCalls.length === 0, "no Brevo email sent without webhook headers");
     },
   );
 });
 
-Deno.test("handler: invalid HS256 JWT (wrong secret / tampered) when secret is set -> 401", async () => {
+Deno.test("handler: invalid Standard Webhooks signature (wrong secret / tampered body / malformed) -> 401", async () => {
   await withEnv(
     { SEND_EMAIL_HOOK_SECRET: TEST_HOOK_SECRET_B64, ENVIRONMENT: "development" },
     async () => {
       setScenario(baseScenario());
       stubFetch();
 
-      const wrongSigJwt = await signHookJwt(WRONG_HOOK_SECRET_B64);
       const resWrong = await handleAuthHookEmail(
-        makeReq(validPayload(), { authorization: `Bearer ${wrongSigJwt}` }),
+        await makeSignedReq(WRONG_HOOK_SECRET_B64),
       );
       assert(resWrong.status === 401, `wrong secret: expected 401, got ${resWrong.status}`);
 
-      const validJwt = await signHookJwt(TEST_HOOK_SECRET_B64);
-      const [h, , s] = validJwt.split(".");
-      const tamperedJwt = `${h}.${encodeBase64UrlJson({ sub: "attacker" })}.${s}`;
       const resTampered = await handleAuthHookEmail(
-        makeReq(validPayload(), { authorization: `Bearer ${tamperedJwt}` }),
+        await makeSignedReq(TEST_HOOK_SECRET_B64, { tamperBody: true }),
       );
-      assert(resTampered.status === 401, `tampered payload: expected 401, got ${resTampered.status}`);
+      assert(resTampered.status === 401, `tampered body: expected 401, got ${resTampered.status}`);
 
       const resMalformed = await handleAuthHookEmail(
-        makeReq(validPayload(), { authorization: "Bearer not-a-jwt" }),
+        await makeSignedReq(TEST_HOOK_SECRET_B64, { signatureValue: "v1,not-base64!!" }),
       );
-      assert(resMalformed.status === 401, `malformed token: expected 401, got ${resMalformed.status}`);
-      assert(brevoCalls.length === 0, "no Brevo email sent on invalid JWTs");
+      assert(resMalformed.status === 401, `malformed signature: expected 401, got ${resMalformed.status}`);
+
+      const resNonV1 = await handleAuthHookEmail(
+        await makeSignedReq(TEST_HOOK_SECRET_B64, { signatureValue: btoa("legacy-token-without-scheme") }),
+      );
+      assert(resNonV1.status === 401, `non-v1 scheme: expected 401, got ${resNonV1.status}`);
+      assert(brevoCalls.length === 0, "no Brevo email sent on invalid signatures");
     },
   );
 });
 
 // ---------------------------------------------------------------------------
-// Valid HS256 JWT + redirect allowlist checks
+// Valid Standard Webhooks signature + redirect allowlist checks
 // ---------------------------------------------------------------------------
 
-Deno.test("handler: valid HS256 JWT + disallowed redirect -> 400", async () => {
+Deno.test("handler: valid Standard Webhooks signature + disallowed redirect -> 400", async () => {
   await withEnv(
     { SEND_EMAIL_HOOK_SECRET: TEST_HOOK_SECRET_B64, ENVIRONMENT: undefined },
     async () => {
       setScenario(baseScenario());
       stubFetch();
-      const jwt = await signHookJwt(TEST_HOOK_SECRET_B64);
       const res = await handleAuthHookEmail(
-        makeReq(validPayload("https://attacker.example/steal-token"), {
-          authorization: `Bearer ${jwt}`,
-        }),
+        await makeSignedReq(TEST_HOOK_SECRET_B64, { redirectTo: "https://attacker.example/steal-token" }),
       );
       const body = await res.json() as { error?: string };
       assert(res.status === 400, `expected 400, got ${res.status}`);
@@ -316,18 +380,15 @@ Deno.test("handler: valid HS256 JWT + disallowed redirect -> 400", async () => {
   );
 });
 
-Deno.test("handler: valid HS256 JWT + allowlisted redirect -> 200", async () => {
+Deno.test("handler: valid Standard Webhooks signature + allowlisted redirect -> 200", async () => {
   await withEnv(
     { SEND_EMAIL_HOOK_SECRET: TEST_HOOK_SECRET_B64, ENVIRONMENT: undefined },
     async () => {
       setScenario(baseScenario());
       stubFetch();
-      const jwt = await signHookJwt(TEST_HOOK_SECRET_B64);
       const redirect = "https://masarx.vercel.app/ar/auth/callback";
       const res = await handleAuthHookEmail(
-        makeReq(validPayload(redirect), {
-          authorization: `Bearer ${jwt}`,
-        }),
+        await makeSignedReq(TEST_HOOK_SECRET_B64, { redirectTo: redirect }),
       );
       const body = await res.json() as { success?: boolean };
       assert(res.status === 200, `expected 200, got ${res.status}`);
@@ -342,6 +403,47 @@ Deno.test("handler: valid HS256 JWT + allowlisted redirect -> 200", async () => 
   );
 });
 
+// ---------------------------------------------------------------------------
+// Standard Webhooks contract (official Supabase send-email-hook docs,
+// updated 2026-10-22; supabase/auth#2499: Authorization JWT not reliable)
+// ---------------------------------------------------------------------------
+
+// TDD red (T-004 fix round): the dashboard secret is `v1,whsec_<base64>` and
+// GoTrue signs with webhook-* headers, not an Authorization JWT.
+Deno.test("handler: dashboard-style v1,whsec_-prefixed secret + valid Standard Webhooks signature -> 200", async () => {
+  await withEnv(
+    { SEND_EMAIL_HOOK_SECRET: `v1,whsec_${TEST_HOOK_SECRET_B64}`, ENVIRONMENT: undefined },
+    async () => {
+      setScenario(baseScenario());
+      stubFetch();
+      const res = await handleAuthHookEmail(
+        await makeSignedReq(`v1,whsec_${TEST_HOOK_SECRET_B64}`),
+      );
+      const body = await res.json() as { success?: boolean; error?: string };
+      assert(res.status === 200, `expected 200, got ${res.status}: ${JSON.stringify(body)}`);
+      assert(body.success === true, `expected success: true, got ${JSON.stringify(body)}`);
+      assert(brevoCalls.length === 1, "exactly one Brevo email sent");
+    },
+  );
+});
+Deno.test("handler: stale webhook-timestamp (replay outside tolerance) -> 401", async () => {
+  await withEnv(
+    { SEND_EMAIL_HOOK_SECRET: TEST_HOOK_SECRET_B64, ENVIRONMENT: undefined },
+    async () => {
+      setScenario(baseScenario());
+      stubFetch();
+      const res = await handleAuthHookEmail(
+        await makeSignedReq(TEST_HOOK_SECRET_B64, {
+          timestampSeconds: Math.floor(Date.now() / 1000) - 3600,
+        }),
+      );
+      const body = await res.json() as { error?: string };
+      assert(res.status === 401, `expected 401, got ${res.status}`);
+      assert(body.error === "Unauthorized", `unexpected error: ${JSON.stringify(body)}`);
+      assert(brevoCalls.length === 0, "no Brevo email sent on replayed signature");
+    },
+  );
+});
 Deno.test("handler: OPTIONS -> preflight 200 without auth", async () => {
   await withEnv(
     { SEND_EMAIL_HOOK_SECRET: undefined, ENVIRONMENT: undefined },

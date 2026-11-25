@@ -7,10 +7,12 @@
  *   1. Fail-closed secret check — when SEND_EMAIL_HOOK_SECRET is unset or
  *      empty, every request is rejected with HTTP 500 (`Auth hook misconfigured`)
  *      unless explicitly running in local development (`ENVIRONMENT === 'development'`).
- *   2. Hook JWT verification — when SEND_EMAIL_HOOK_SECRET is configured
- *      (the base64 secret from Supabase Auth → Hooks → send_email), the
- *      `Authorization: Bearer <jwt>` GoTrue supplies must carry a valid
- *      HS256 signature; missing or invalid tokens are rejected with HTTP 401.
+ *   2. Standard Webhooks signature verification — the official Supabase
+ *      send-email-hook contract (docs updated 2026-10-22; supabase/auth#2499
+ *      confirms the legacy Authorization JWT is not reliably attached) signs
+ *      each request with `v1,<hmac>` over `${webhook-id}.${webhook-timestamp}.${body}`,
+ *      keyed by the base64 secret behind the dashboard's `v1,whsec_...` value.
+ *      Missing or invalid signatures are rejected with HTTP 401.
  *   3. Input & quota guards — refuses unknown email actions, allowlists the
  *      redirect origin, and rate-limits per recipient.
  */
@@ -40,26 +42,52 @@ const base64ToBytes = (b64: string): Uint8Array => {
   return bytes;
 };
 
-/** Verify the GoTrue hook JWT (HS256 over `header.payload`). */
-const verifyHookJwt = async (req: Request, hookSecret: string): Promise<boolean> => {
-  const header = req.headers.get('authorization') ?? '';
-  const match = /^Bearer (.+)$/.exec(header.trim());
-  if (!match) return false;
-  const parts = match[1].split('.');
-  if (parts.length !== 3) return false;
+/**
+ * Verify the Supabase send_email hook per the Standard Webhooks contract
+ * (dependency-free Web Crypto equivalent of standardwebhooks@1.0.0.verify):
+ * strip the optional `v1,whsec_` prefix from the dashboard secret, HMAC-SHA256
+ * over `${webhook-id}.${webhook-timestamp}.${rawBody}`, accept any `v1,`
+ * signature listed in `webhook-signature`, and reject replays outside the
+ * 5-minute timestamp tolerance.
+ */
+const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+const WHSEC_PREFIX = 'v1,whsec_';
+
+const verifyStandardWebhook = async (
+  req: Request,
+  hookSecret: string,
+  rawBody: string,
+): Promise<boolean> => {
+  const id = req.headers.get('webhook-id') ?? '';
+  const timestampHeader = req.headers.get('webhook-timestamp') ?? '';
+  const signatureHeader = req.headers.get('webhook-signature') ?? '';
+  if (!id || !timestampHeader || !signatureHeader) return false;
+  const timestamp = Number(timestampHeader);
+  if (!Number.isFinite(timestamp)) return false;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSeconds - timestamp) > WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS) return false;
   try {
+    let secretB64 = hookSecret.startsWith(WHSEC_PREFIX)
+      ? hookSecret.slice(WHSEC_PREFIX.length)
+      : hookSecret;
+    secretB64 = secretB64.replace(/-/g, '+').replace(/_/g, '/');
+    const secretPadded = secretB64.padEnd(secretB64.length + ((4 - (secretB64.length % 4)) % 4), '=');
     const key = await crypto.subtle.importKey(
       'raw',
-      base64ToBytes(hookSecret).buffer as ArrayBuffer,
+      base64ToBytes(secretPadded).buffer as ArrayBuffer,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['verify'],
     );
-    const sigB64 = parts[2].replace(/-/g, '+').replace(/_/g, '/');
-    const sigPadded = sigB64.padEnd(sigB64.length + ((4 - (sigB64.length % 4)) % 4), '=');
-    const sig = base64ToBytes(sigPadded);
-    const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    return await crypto.subtle.verify('HMAC', key, sig, data);
+    const signedContent = new TextEncoder().encode(`${id}.${timestampHeader}.${rawBody}`);
+    for (const part of signatureHeader.split(' ').filter(Boolean)) {
+      if (!part.startsWith('v1,')) continue;
+      const sigB64 = part.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+      const sigPadded = sigB64.padEnd(sigB64.length + ((4 - (sigB64.length % 4)) % 4), '=');
+      const ok = await crypto.subtle.verify('HMAC', key, base64ToBytes(sigPadded), signedContent);
+      if (ok) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -88,11 +116,13 @@ serve(async (req) => {
   }
 
   try {
-    // GoTrue signs the hook call as `Authorization: Bearer <jwt>` (HS256, key =
-    // the base64 hook secret from Supabase Auth → Hooks → send_email).
-    // Fail closed unless explicitly running in local development.
+    // Standard Webhooks: GoTrue signs each hook call with `v1,<hmac>` over
+    // `${webhook-id}.${webhook-timestamp}.${body}` (key = the base64 secret
+    // behind the dashboard's `v1,whsec_...` value). Fail closed unless
+    // explicitly running in local development.
     const hookSecret = (Deno.env.get('SEND_EMAIL_HOOK_SECRET') ?? '').trim();
     const isLocalDev = Deno.env.get('ENVIRONMENT') === 'development';
+    const rawBody = await req.text();
 
     if (!hookSecret) {
       if (!isLocalDev) {
@@ -104,12 +134,12 @@ serve(async (req) => {
       }
       console.warn(
         '[auth-hook-email] SEND_EMAIL_HOOK_SECRET not configured — local development fallback ' +
-        '(signature unverified; set SEND_EMAIL_HOOK_SECRET to test JWT verification)'
+        '(signature unverified; set SEND_EMAIL_HOOK_SECRET to test Standard Webhooks verification)'
       );
     } else {
-      const signatureOk = await verifyHookJwt(req, hookSecret);
+      const signatureOk = await verifyStandardWebhook(req, hookSecret, rawBody);
       if (!signatureOk) {
-        console.warn('[auth-hook-email] rejected: hook JWT verification failed');
+        console.warn('[auth-hook-email] rejected: Standard Webhooks signature verification failed');
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
@@ -124,7 +154,7 @@ serve(async (req) => {
       });
     }
 
-    const payload = await req.json();
+    const payload = JSON.parse(rawBody);
     const { user, email_data } = payload;
     const { token_hash, redirect_to, email_action_type } = email_data ?? {};
 

@@ -23,3 +23,9 @@ verify_jwt = true
 # authenticates the raw request with Cloudinary's signed headers instead.
 [functions.cloudinary-webhook]
 verify_jwt = false
+
+[functions.auth-hook-email]
+# GoTrue signs the send_email hook with Standard Webhooks headers (webhook-id /
+# webhook-timestamp / webhook-signature), not a Supabase JWT — the platform
+# gateway must not require one (same precedent as cloudinary-webhook).
+verify_jwt = false
