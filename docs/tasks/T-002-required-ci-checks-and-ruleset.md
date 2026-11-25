@@ -45,8 +45,8 @@ Update GitHub branch protection ruleset `20299668` so `test`, `workspaces`, `mob
   evidence: Select-String -Path .github/RULESET.md -Pattern '`workspaces`|`test`|`mobile`|`deno-check`|`docs-lint`|`deps-audit (critical gate)`|strict_required_status_checks_policy' -> 13-row check table (RULESET.md:22-34) listing the original 7 + all 6 promoted contexts, plus `- `strict_required_status_checks_policy`: `true`` at RULESET.md:54 (raw output pasted in PR Evidence)
 - [ ] PR is labeled `blocked` and `owner-action` and has an owner `"owner step done"` comment before merge.
 - [ ] `gh api repos/Masar-X/Masar-x/rulesets/20299668 --jq '.rules[] | select(.type=="required_status_checks") | .parameters'` confirms `strict_required_status_checks_policy: true` and all required contexts after owner execution.
-- [ ] `bash .github/scripts/check-doc-links.sh` exits 0 and CI `workflow-lint` passes.
-  note: doc-links half verified locally 2026-11-25 in the worktree @ 4c664fd -> `bash .github/scripts/check-doc-links.sh` prints "All internal Markdown links resolve." and exits 0; the CI `workflow-lint` half must be observed on this PR's checks, so the item stays unchecked until CI is green.
+- [x] `bash .github/scripts/check-doc-links.sh` exits 0 and CI `workflow-lint` passes.
+  evidence: local `bash .github/scripts/check-doc-links.sh` -> "All internal Markdown links resolve.", exit 0 (worktree @ 4c664fd); PR #336 CI run `45646319298`: `workflow-lint` pass (6s) and `docs-lint` pass (8s, the job that runs check-doc-links.sh) - observed via gh pr checks 336 (all 15 checks green)
 
 ## Evidence
 
