@@ -12,8 +12,8 @@ runs inside transactions is rolled back.
 | Section | What | Behavior |
 |---|---|---|
 | 0 | Context + preflight | Fails if the connected role cannot `SET ROLE authenticated`. |
-| 1a | All 19 tables from migrations 002..008 exist and have `relrowsecurity = true` | `RAISE EXCEPTION` naming any offender |
-| 1b | Dynamic sweep: **any** base table in `public` without RLS fails | Catches future/legacy drift (e.g. `quiz_attempts` from `migrations.old/` if present) |
+| 1a | All 19 core baseline tables exist and have `relrowsecurity = true` | `RAISE EXCEPTION` naming any offender |
+| 1b | Dynamic sweep: **any** base table in `public` without RLS fails | Catches any migration that forgets RLS (all 49 baseline public tables, incl. `quiz_attempts` / `trw_access_codes`, are covered) |
 | 1c | `review_details` / `lectures_with_ratings` views are `security_invoker` | Owner-rights views would bypass base-table RLS |
 | 2 | Policy inventory (`tablename, policyname, cmd, roles`), ordered | Documentation output |
 | 3 | Positive/negative behavior tests as `authenticated` / `service_role` | See below; every block runs in `BEGIN ... ROLLBACK` |
@@ -21,12 +21,14 @@ runs inside transactions is rolled back.
 Section 3 coverage: profiles, summaries, quizzes, enrollments, reviews,
 notifications, admins, password_reset_tokens (authenticated blackout +
 service_role read), audit_logs/system_logs/rate_limits (invisible to
-authenticated), and a conditional `quiz_attempts` block (SKIPs loudly when the
-legacy table is absent).
+authenticated), `quiz_attempts` (baseline table: RLS + owner-scoped read) and
+`trw_access_codes` (baseline table: deny-by-default for authenticated).
 
 ## Requirements
 
-1. Migrations `001..008` applied (`supabase migrations up` or equivalent).
+1. The full migration chain applied (`supabase/migrations/` — baseline
+   `20261031000000_baseline.sql` onward; on vanilla PostgreSQL apply the roles +
+   `extensions` schema + `prelude.sql` first, see "Running it" below).
 2. A connection role that can assume test roles — the Supabase `postgres`
    role (granted `anon`/`authenticated`/`service_role` membership on managed
    projects) or any superuser.
@@ -34,6 +36,14 @@ legacy table is absent).
    course). Sections 1 and 2 run anywhere without them.
 
 ### Seed (run ONCE on the target database, SQL editor or psql)
+
+On a REAL Supabase project the `auth.users` insert also creates empty
+`profiles` rows via the `on_auth_user_created` trigger. The migration chain
+(baseline, spec 031) does NOT recreate that trigger on rebuilt clusters, so
+the seed creates the two profiles itself — `ON CONFLICT DO NOTHING` keeps it
+safe on real Supabase where the trigger already made them. Profiles are
+inserted BEFORE the course because `courses.instructor_id` references
+`profiles(id)`:
 
 ```sql
 insert into auth.users
@@ -49,22 +59,14 @@ values
    'rls-user-b@example.com', crypt('rls-harness-only', gen_random_uuid()::text),
    now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
 
-insert into public.courses (id, title, instructor_id)
-values ('00000000-0000-0000-0000-0000000000c1', 'RLS harness course',
-        '00000000-0000-0000-0000-0000000000a1');
-```
-
-On a REAL Supabase project the `auth.users` insert also creates empty
-`profiles` rows via the `on_auth_user_created` trigger. The migration chain
-(baseline, spec 031) does NOT recreate that trigger on rebuilt clusters, so
-the seed must create the two profiles itself — `ON CONFLICT DO NOTHING` keeps
-it safe on real Supabase where the trigger already made them:
-
-```sql
 insert into public.profiles (id, full_name) values
   ('00000000-0000-0000-0000-0000000000a1', 'RLS harness user A'),
   ('00000000-0000-0000-0000-0000000000a2', 'RLS harness user B')
 on conflict (id) do nothing;
+
+insert into public.courses (id, title, instructor_id)
+values ('00000000-0000-0000-0000-0000000000c1', 'RLS harness course',
+        '00000000-0000-0000-0000-0000000000a1');
 ```
 
 For real sign-in flows use the
@@ -92,11 +94,13 @@ message. (Use psql for exit codes.)
 
 ### CI
 
-CI runs this against a **disposable Supabase branch database** — never
-production. Apply migrations, apply the seed, run the harness with psql, and
-let the non-zero exit code fail the pipeline. TODO(LIVE-JWT) markers in the
-file denote the spots where a real signed JWT / admin fixture is required;
-the branch DB seed supplies those fixtures.
+CI (the `db-verify` job in `.github/workflows/ci.yml`) runs this against a
+**disposable PostgreSQL 17** container rebuilt from the migration chain —
+never production. It creates the Supabase roles, applies the prelude, replays
+all migrations, seeds the fixtures above, then runs the harness with psql and
+lets the non-zero exit code fail the job. TODO(LIVE-JWT) markers in the file
+denote the spots where a real signed JWT / admin fixture is required; the
+seed supplies those fixtures.
 
 ## What PASS looks like
 
@@ -110,7 +114,8 @@ NOTICE:  SECTION 1c PASS: user-data views use security_invoker
 NOTICE:  3.1 profiles PASS: cross-user insert rejected as expected
 NOTICE:  3.8a password_reset_tokens PASS: invisible to authenticated
 ...
-NOTICE:  3.10 quiz_attempts SKIP: not present (not part of migrations 001..008)
+NOTICE:  3.4f trw_access_codes PASS: not enumerable by authenticated
+NOTICE:  3.10 quiz_attempts PASS: RLS enabled and rows owner-scoped
 NOTICE:  RLS VERIFY COMPLETE: Sections 1-2 asserted, Section 3 behavioral blocks passed (or explicitly SKIPped).
 ```
 
@@ -136,7 +141,7 @@ assertions are never inconclusive).
 * Positive test = the query executes without a permission error.
 * Negative test = a write that must be rejected; if it succeeds, RLS is
   broken and the harness raises with the table named.
-* `profiles` are public-read **by design** (migration 002: "Public profiles
+* `profiles` are public-read **by design** (baseline policy "Public profiles
   are viewable by everyone"); only profile writes are user-scoped. Same for
   summaries/quizzes/videos/files reads (public read, admin-managed writes).
 ---
@@ -161,13 +166,19 @@ aborts under `-v ON_ERROR_STOP=1`.
 
 The harness needs a PostgreSQL 17 built from this repo's migration chain
 (`supabase/migrations/README.md`). On vanilla PG the chain requires the
-`auth`-schema prelude first:
+`auth`-schema prelude first, plus the `extensions` schema — the
+audit-retention migration installs `pg_cron` into it, so a vanilla server
+needs the `postgresql-17-cron` package loaded via
+`shared_preload_libraries=pg_cron` (exactly what the CI `db-verify` job
+does) — and the RLS seed above for the `rls-verify.sql` Section 3 blocks:
 
 ```bash
 psql "$DB_URL" -v ON_ERROR_STOP=1 \
-  -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;"
+  -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;" \
+  -c "create schema if not exists extensions;"
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/prelude.sql
 for f in supabase/migrations/*.sql; do psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"; done
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql   # seed first (Sections 1-2 run without it)
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rpc-verify.sql
 ```
 

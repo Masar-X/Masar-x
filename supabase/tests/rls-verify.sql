@@ -7,8 +7,8 @@
 --   Section 1  Every client-accessible table in schema `public` has
 --              Row Level Security ENABLED. Fails loudly (RAISE EXCEPTION)
 --              naming any offender.
---              1a. Static inventory of all 19 tables created by the active
---                  migration chain 001..008 (supabase/migrations/).
+--              1a. Static inventory of the 19 core tables created by the
+--                  baseline migration (supabase/migrations/20261031000000_baseline.sql).
 --              1b. Dynamic sweep of ALL base tables in `public`, so any
 --                  future migration that forgets RLS fails this harness.
 --              1c. User-data views must be security_invoker views.
@@ -19,27 +19,22 @@
 --              transactions that always ROLL BACK.
 --
 -- WHERE THE TABLE LIST COMES FROM
---   supabase/migrations/002_core_identity.sql        profiles, admins
---   supabase/migrations/003_academic_structure.sql   academic_levels, departments, subjects, platform_settings
---   supabase/migrations/004_content_management.sql   courses, quizzes, summaries, enrollments
---   supabase/migrations/005_interactions_and_media.sql videos, files, reviews (+ 2 security_invoker views)
---   supabase/migrations/006_system_and_security.sql  audit_logs, system_logs, rate_limits, password_reset_tokens, notifications
---   supabase/migrations/007_subject_lectures.sql     subject_lectures
---   supabase/migrations/008_jwt_role_sync.sql        (no tables - triggers/functions only)
---
---   `supabase/migrations.old/` is LEGACY and NOT part of the active chain.
---   It mentions quiz_attempts / quiz_answers / news / appeals / chat tables
---   that migrations 001..008 do not create. Section 1b still fails any such
---   table if it exists in a given environment WITHOUT RLS, and Section 3.10
---   conditionally tests quiz_attempts when present.
+--   All of these tables - plus quiz_attempts / quiz_answers / news / appeals /
+--   the chat family and the trw family, 49 public tables in total - are
+--   created by the single baseline migration
+--   supabase/migrations/20261031000000_baseline.sql, which consolidated the
+--   retired numbered chain (archived under supabase/migrations-archive/).
+--   Section 1b still fails any table that exists WITHOUT RLS, and Sections
+--   3.4f / 3.10 assert trw_access_codes and quiz_attempts as baseline tables.
 --
 -- HOW TO RUN
 --   psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql
 --   or paste the whole file into Supabase Dashboard -> SQL Editor.
 --
---   CI runs this against a DISPOSABLE Supabase branch database (never
---   production). Sections 1 and 2 run anywhere; Section 3 additionally
---   needs the seed rows documented in supabase/tests/README.md.
+--   CI (ci.yml db-verify job) runs this against a DISPOSABLE postgres:17
+--   rebuilt from the full migration chain (never production). Sections 1 and
+--   2 run anywhere; Section 3 additionally needs the seed rows documented in
+--   supabase/tests/README.md.
 --
 -- PASS / FAIL
 --   PASS = script completes with NOTICE lines per section and exit code 0.
@@ -84,23 +79,23 @@ END
 $preflight$;
 
 -- ----------------------------------------------------------------------------
--- Section 1a: static inventory - every table from migrations 002..008 must
+-- Section 1a: static inventory - every core baseline table must
 -- exist in schema public AND have relrowsecurity = true.
 -- ----------------------------------------------------------------------------
 DO $rls_static$
 DECLARE
   expected text[] := ARRAY[
-    -- 002_core_identity
+    -- core identity
     'profiles', 'admins',
-    -- 003_academic_structure
+    -- academic structure
     'academic_levels', 'departments', 'subjects', 'platform_settings',
-    -- 004_content_management
+    -- content management
     'courses', 'quizzes', 'summaries', 'enrollments',
-    -- 005_interactions_and_media
+    -- interactions and media
     'videos', 'files', 'reviews',
-    -- 006_system_and_security
+    -- system and security
     'audit_logs', 'system_logs', 'rate_limits', 'password_reset_tokens', 'notifications',
-    -- 007_subject_lectures
+    -- subject lectures
     'subject_lectures'
   ];
   t         text;
@@ -175,8 +170,8 @@ END
 $rls_sweep$;
 
 -- ----------------------------------------------------------------------------
--- Section 1c: user-data views must be security_invoker (migration 005
--- declared review_details and lectures_with_ratings WITH (security_invoker)).
+-- Section 1c: user-data views must be security_invoker (the baseline
+-- declares review_details and lectures_with_ratings WITH (security_invoker)).
 -- An owner-rights view would silently bypass the base tables RLS.
 -- ----------------------------------------------------------------------------
 DO $view_invoker$
@@ -362,7 +357,8 @@ BEGIN;
 
   -- 3.4 enrollments ---------------------------------------------------------
   -- Students see ONLY their own rows; they self-apply with status='pending'
-  -- (migration 018) and can re-apply after rejection; activation is
+  -- ("Students can create enrollments") and can re-apply after rejection
+  -- ("Students can reapply after rejection"); activation is
   -- instructor/admin-only.
   DO $t34a$
   DECLARE
@@ -385,8 +381,8 @@ BEGIN;
   $t34a$;
 
   -- 3.4b enrollments: students CAN self-apply with status='pending'
-  -- (migration 018; the policy existed on the live lineage but was missing
-  -- from the numbered chain). Clear any residue, insert, expect success.
+  -- (baseline policy "Students can create enrollments"). Clear any residue,
+  -- insert, expect success.
   DO $t34b$
   BEGIN
     DELETE FROM public.enrollments
@@ -419,9 +415,10 @@ BEGIN;
   END
   $t34c$;
 
-  -- 3.4d reapply path (migration 018): a student may revive their own
-  -- rejected application back to 'pending', but nothing else. Seed the
-  -- rejected state as service_role, then re-apply as the student.
+  -- 3.4d reapply path (baseline policy "Students can reapply after
+  -- rejection"): a student may revive their own rejected application back to
+  -- 'pending', but nothing else. Seed the rejected state as service_role,
+  -- then re-apply as the student.
   SET LOCAL ROLE service_role;
   UPDATE public.enrollments
      SET status = 'rejected'
@@ -450,7 +447,8 @@ BEGIN;
   END
   $t34d$;
 
-  -- 3.4e show_extra_assets guard (migration 018): a never-entitled user
+  -- 3.4e show_extra_assets guard (baseline trigger
+  -- trg_guard_extra_assets_entitlement): a never-entitled user
   -- cannot self-grant through PostgREST any more; the guard trigger must
   -- reject the write even though the UPDATE policy (auth.uid() = id) allows
   -- the row.
@@ -467,26 +465,20 @@ BEGIN;
   $t34e$;
 
   -- 3.4f access codes must not be enumerable by authenticated users
-  -- (migration 018 dropped trw_access_codes_select_auth). Existence-guarded:
-  -- branches built from the numbered chain alone have no trw tables yet.
+  -- (the baseline defines trw_access_codes with RLS enabled and no
+  -- authenticated SELECT policy - deny-by-default).
   DO $t34f$
   DECLARE
-    v_exists boolean;
-    v_count  int;
+    v_count int;
   BEGIN
-    SELECT EXISTS (
-      SELECT 1 FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name = 'trw_access_codes'
-    ) INTO v_exists;
-    IF v_exists THEN
-      SELECT count(*) INTO v_count FROM public.trw_access_codes;
-      IF v_count <> 0 THEN
-        RAISE EXCEPTION 'RLS VERIFY FAILED: trw_access_codes enumerable by authenticated (%)', v_count;
-      END IF;
-      RAISE NOTICE '3.4f trw_access_codes PASS: not enumerable by authenticated';
-    ELSE
-      RAISE NOTICE '3.4f trw_access_codes SKIP: table absent (active-migration branch)';
+    IF to_regclass('public.trw_access_codes') IS NULL THEN
+      RAISE EXCEPTION 'RLS VERIFY FAILED: trw_access_codes missing (baseline table)';
     END IF;
+    SELECT count(*) INTO v_count FROM public.trw_access_codes;
+    IF v_count <> 0 THEN
+      RAISE EXCEPTION 'RLS VERIFY FAILED: trw_access_codes enumerable by authenticated (%)', v_count;
+    END IF;
+    RAISE NOTICE '3.4f trw_access_codes PASS: not enumerable by authenticated';
   END
   $t34f$;
 
@@ -643,11 +635,9 @@ BEGIN;
   END
   $t39$;
 
-  -- 3.10 quiz_attempts (CONDITIONAL / legacy) -------------------------------
-  -- The active chain (001..008) does NOT create quiz_attempts; it appears
-  -- only in supabase/migrations.old/. If the table exists in this
-  -- environment, verify RLS and the owner-scoped read posture; otherwise
-  -- SKIP loudly.
+  -- 3.10 quiz_attempts (baseline table) --------------------------------------
+  -- quiz_attempts is created by the baseline migration. Verify RLS and the
+  -- owner-scoped read posture.
   DO $t310$
   DECLARE
     tbl oid;
@@ -655,8 +645,7 @@ BEGIN;
   BEGIN
     tbl := to_regclass('public.quiz_attempts');
     IF tbl IS NULL THEN
-      RAISE NOTICE '3.10 quiz_attempts SKIP: not present (not part of migrations 001..008)';
-      RETURN;
+      RAISE EXCEPTION 'RLS VERIFY FAILED: quiz_attempts missing (baseline table)';
     END IF;
 
     IF NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = tbl) THEN
@@ -671,7 +660,7 @@ BEGIN;
       RAISE EXCEPTION 'RLS VERIFY FAILED: quiz_attempts exposed % rows not owned by the caller', n;
     END IF;
 
-    RAISE NOTICE '3.10 quiz_attempts PASS: RLS enabled and rows owner-scoped (legacy table present)';
+    RAISE NOTICE '3.10 quiz_attempts PASS: RLS enabled and rows owner-scoped';
   END
   $t310$;
 

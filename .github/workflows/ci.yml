@@ -599,3 +599,102 @@ jobs:
       # Reads the lockfile only — no install needed.
       - name: Audit production dependencies (critical gate)
         run: pnpm audit --prod --audit-level=critical
+
+  # ---------------------------------------------------------------------
+  # Postgres 17 verification (T-006a)
+  # Disposable postgres:17 rebuilt from the full migration chain, then the
+  # supabase/tests SQL harnesses run with ON_ERROR_STOP=1. Mirrors the
+  # manual procedure documented in supabase/tests/README.md ("Running it"):
+  # roles -> extensions schema -> prelude -> migrations -> seed -> harnesses.
+  # The container installs postgresql-17-cron because the audit-retention
+  # migration (20261108110001) runs CREATE EXTENSION pg_cron unguarded and
+  # the official postgres:17 image does not ship it; a service container
+  # cannot run that install before postgres starts, hence a step-managed
+  # container instead of a services: block.
+  # ---------------------------------------------------------------------
+  db-verify:
+    name: db-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PGPASSWORD: postgres
+      DB_URL: postgres://postgres:postgres@127.0.0.1:5432/masarx_verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start disposable postgres:17 (with pg_cron)
+        run: |
+          docker run -d --name pg17 \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=masarx_verify \
+            -p 127.0.0.1:5432:5432 \
+            postgres:17 \
+            bash -c "apt-get update -qq && apt-get install -y --no-install-recommends postgresql-17-cron && exec docker-entrypoint.sh postgres -c shared_preload_libraries=pg_cron -c cron.database_name=masarx_verify"
+
+      - name: Wait for postgres readiness
+        run: |
+          for i in $(seq 1 60); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U postgres -d masarx_verify >/dev/null 2>&1; then
+              echo "postgres is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs pg17 | tail -50
+          exit 1
+
+      - name: Create Supabase roles + extensions schema
+        run: |
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator nologin noinherit; create role supabase_storage_admin nologin bypassrls; create role dashboard_user nologin;" \
+            -c "create schema if not exists extensions;"
+
+      - name: Apply auth-schema prelude
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/prelude.sql
+
+      - name: Replay all migrations (lexical order)
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "replaying $f"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      # Seed per supabase/tests/README.md ("Seed"): profiles BEFORE the
+      # course because courses.instructor_id references profiles(id), and
+      # rebuilt clusters have no on_auth_user_created trigger.
+      - name: Seed RLS fixtures
+        run: |
+          psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          insert into auth.users
+            (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+             raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+          values
+            ('00000000-0000-0000-0000-000000000000',
+             '00000000-0000-0000-0000-0000000000a1', 'authenticated', 'authenticated',
+             'rls-user-a@example.com', crypt('rls-harness-only', gen_random_uuid()::text),
+             now(), '{"provider":"email","providers":["email"]}', '{}', now(), now()),
+            ('00000000-0000-0000-0000-000000000000',
+             '00000000-0000-0000-0000-0000000000a2', 'authenticated', 'authenticated',
+             'rls-user-b@example.com', crypt('rls-harness-only', gen_random_uuid()::text),
+             now(), '{"provider":"email","providers":["email"]}', '{}', now(), now());
+
+          insert into public.profiles (id, full_name) values
+            ('00000000-0000-0000-0000-0000000000a1', 'RLS harness user A'),
+            ('00000000-0000-0000-0000-0000000000a2', 'RLS harness user B')
+          on conflict (id) do nothing;
+
+          insert into public.courses (id, title, instructor_id)
+          values ('00000000-0000-0000-0000-0000000000c1', 'RLS harness course',
+                  '00000000-0000-0000-0000-0000000000a1');
+          SQL
+
+      - name: Run RLS harness (rls-verify.sql)
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls-verify.sql
+
+      - name: Run RPC harness (rpc-verify.sql)
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rpc-verify.sql
+
+      - name: Clean up container
+        if: always()
+        run: docker rm -f pg17 || true
