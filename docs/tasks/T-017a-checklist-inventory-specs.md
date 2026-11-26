@@ -2,7 +2,7 @@
 id: T-017a
 title: "Inventory and classify specs/ checklists into INVENTORY-specs.md"
 priority: P1
-status: todo
+status: done
 depends_on: []
 touches:
   - "docs/tasks/INVENTORY-specs.md"
@@ -47,11 +47,22 @@ Scan all checklists inside `specs/` and produce `docs/tasks/INVENTORY-specs.md` 
 
 ## Acceptance criteria
 
-- [ ] `test -f docs/tasks/INVENTORY-specs.md && rg -n "Count Summary|work-item|procedure|unverified|T-008" docs/tasks/INVENTORY-specs.md` — file exists with separate `work-item` and `procedure` tables, `unverified` status support, count summary, and `T-008` routing
-- [ ] `git diff --name-only origin/main -- ':!docs/tasks/INVENTORY-specs.md'` — contains no unintended edits
-- [ ] `pnpm tasks:lint` — exits 0
+- [x] `test -f docs/tasks/INVENTORY-specs.md && rg -n "Count Summary|work-item|procedure|unverified|T-008" docs/tasks/INVENTORY-specs.md` — file exists with separate `work-item` and `procedure` tables, `unverified` status support, count summary, and `T-008` routing
+evidence: `test -f` passed; `rg -n "Count Summary|work-item|procedure|unverified|T-008" docs/tasks/INVENTORY-specs.md` → 73 matching lines; first hits: `11:## Count Summary`, `13:| Status | work-item | procedure | total |`, `18:| unverified | 27 | 37 | 64 |`, `22:Routed to T-008 (owner owes... items): 0.`
+, `24:## work-item items (304)`, and `## procedure items (99)`
+- [x] `git diff --name-only origin/main -- ':!docs/tasks/INVENTORY-specs.md'` — contains no unintended edits
+evidence: output is exactly `docs/tasks/T-017a-checklist-inventory-specs.md` (this card's own file; no other path touched)
+- [x] `pnpm tasks:lint` — exits 0
+evidence: `node scripts/tasks.mjs lint` → `tasks:lint OK (24 card(s) checked)`, exit code 0
 
 ## Evidence
+
+- Enumeration (worktree on `task/T-017a` at main `9d3f635`, 2026-11-27):
+  - `rg -n "^\s*- \[ \]" specs` → **403** items in **37** files
+  - `Get-ChildItem specs -Directory` → **61** spec directories; `Get-ChildItem specs -Recurse -Filter *.md` → **149** markdown files
+  - `rg -i "owner owes"` over the 403 enumerated items → **0** matches, so nothing routes to `T-008` from this inventory
+- Resulting classification (`docs/tasks/INVENTORY-specs.md` Count Summary): already-done 246, stale 51, duplicate-of-card 2, unverified 64, real 40 — work-item 304, procedure 99.
+- `bash .github/scripts/check-doc-links.sh` → `All internal Markdown links resolve.` (exit 0)
 
 ## Rollback
 
