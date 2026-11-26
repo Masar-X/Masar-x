@@ -52,8 +52,6 @@ Extract cohesive sub-modules/hooks (persistence, streaming state/delta handling,
 
 ## Rollback
 
-## Rollback
-
 Revert `apps/web/src/hooks/useAiChat.ts` and move `apps/web/src/hooks/ai-chat/` to `.trash/` per I9.
 
 ## Open questions
