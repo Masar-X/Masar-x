@@ -9,6 +9,7 @@
  * Each call returns a fresh client (callers may hold it per-hook); for a
  * shared singleton use `@/lib/supabase` instead.
  */
+import pkg from "../../../package.json";
 import { createSupabaseClient } from "masarx-shared/supabase";
 
 export function createClient() {
@@ -16,6 +17,8 @@ export function createClient() {
     runtime: "web",
     url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
     anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.5.6",
+    // Fallback reads the workspace-aligned version (scripts/check-versions.mjs);
+    // an explicit NEXT_PUBLIC_APP_VERSION still wins when set.
+    appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? pkg.version,
   });
 }

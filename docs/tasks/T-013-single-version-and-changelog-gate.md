@@ -2,7 +2,7 @@
 id: T-013
 title: "Align all 5 packages to 0.7.0 and add CHANGELOG CI gate"
 priority: P1
-status: todo
+status: done
 depends_on: []
 touches:
   - "package.json"
@@ -52,11 +52,22 @@ Align all 5 `package.json` manifests (plus `apps/mobile/app.json`) to canonical 
 
 ## Acceptance criteria
 
-- [ ] `node scripts/check-versions.mjs` — exits 0 confirming all 5 `package.json` manifests + `apps/mobile/app.json` are `0.7.0`
-- [ ] `rg -n '"0\.5\.6"' apps/web/src/lib/supabase.ts apps/web/src/lib/supabase/client.ts` — returns 0 matches
-- [ ] `pnpm typecheck && pnpm lint && pnpm --filter web test` — exits 0
+- [x] `node scripts/check-versions.mjs` — exits 0 confirming all 5 `package.json` manifests + `apps/mobile/app.json` are `0.7.0`
+  evidence: exit 0 with `versions aligned: package.json=0.7.0, apps/web/package.json=0.7.0, apps/desktop/package.json=0.7.0, apps/mobile/package.json=0.7.0, packages/shared/package.json=0.7.0, apps/mobile/app.json=0.7.0`; negative probe with apps/desktop/package.json temporarily set to 0.6.9 exits 1 (`::error::version mismatch — package.json is 0.7.0, but: apps/desktop/package.json: 0.6.9`)
+- [x] `rg -n '"0\.5\.6"' apps/web/src/lib/supabase.ts apps/web/src/lib/supabase/client.ts` — returns 0 matches
+  evidence: rg prints no lines and exits 1 (no matches); both fallbacks now read `pkg.version` from `apps/web/package.json` (`apps/web/src/lib/supabase.ts:28`, `apps/web/src/lib/supabase/client.ts:19`)
+- [x] `pnpm typecheck && pnpm lint && pnpm --filter web test` — exits 0
+  evidence: TYPECHECK_EXIT=0, LINT_EXIT=0, TEST_EXIT=0 — vitest 113 files / 1287 tests passed in 39.15s
 
 ## Evidence
+
+- `pnpm install` in the worktree after the version bumps: `Done in 29.2s`; `git status --short pnpm-lock.yaml` prints nothing (no lockfile delta — cross-package deps are `workspace:*`), so CI's `pnpm install --frozen-lockfile` stays consistent.
+- Gate-logic self-test on `scripts/check-versions.mjs` (`prRequiresChangelog` / `changelogHasUnreleasedEntry`): 11/11 PASS — feat/fix triggers including scoped (`feat(web):`) and breaking (`feat!:`) forms, `skip-changelog` escape hatch, `apps/`/`packages/` scoping, commit-subject trigger when the title is neutral, and empty vs populated `## [Unreleased]` detection.
+- `npx -y markdownlint-cli2 CHANGELOG.md` → `Summary: 0 issues in 0 files`.
+- `bash .github/scripts/check-doc-links.sh` → `All internal Markdown links resolve.`
+- `node --test scripts/tasks.test.mjs` → 27 pass / 0 fail.
+- actionlint is not installed locally; the workflow YAML is validated by the CI `workflow-lint` job on this PR.
+- No `uses:` lines were added or moved in `.github/workflows/ci.yml` — the T-007 SHA pins are untouched; the new step only adds `env:`/`run:`.
 
 ## Rollback
 

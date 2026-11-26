@@ -1,7 +1,7 @@
 {
   "name": "masarx-monorepo",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "Masar X monorepo — web, desktop, mobile, and shared package",
   "license": "AGPL-3.0-only",
