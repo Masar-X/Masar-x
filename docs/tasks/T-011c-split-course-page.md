@@ -2,7 +2,7 @@
 id: T-011c
 title: "Split courses/[courseId]/page.tsx incrementally (behavior-preserving)"
 priority: P1
-status: todo
+status: done
 depends_on:
   - T-010
 touches:
@@ -38,10 +38,17 @@ Decompose `apps/web/src/app/[locale]/courses/[courseId]/page.tsx` into a dedicat
 
 ## Acceptance criteria
 
-- [ ] `wc -l apps/web/src/app/[locale]/courses/[courseId]/page.tsx` — reduced below 250 lines
-- [ ] `pnpm --filter web test && pnpm --filter web lint && pnpm --filter web typecheck` — exits 0
+- [x] `wc -l apps/web/src/app/[locale]/courses/[courseId]/page.tsx` — reduced below 250 lines
+evidence: `wc -l apps/web/src/app/[locale]/courses/[courseId]/page.tsx` → `219 apps/web/src/app/[locale]/courses/[courseId]/page.tsx` (540 before the split)
+- [x] `pnpm --filter web test && pnpm --filter web lint && pnpm --filter web typecheck` — exits 0
+evidence: `pnpm --filter web test` → `Test Files  113 passed (113)` / `Tests  1287 passed (1287)` incl. the unmodified T-010 suite `src/app/[locale]/courses/[courseId]/__tests__/page.test.tsx` (11 passed); `pnpm --filter web lint` → `✖ 36 problems (0 errors, 36 warnings)` (budget 52); `pnpm --filter web typecheck` → clean, all three exit 0
 
 ## Evidence
+
+- `wc -l apps/web/src/app/[locale]/courses/[courseId]/page.tsx` → `219 apps/web/src/app/[locale]/courses/[courseId]/page.tsx` (540 before the split)
+- `pnpm --filter web test` → `Test Files  113 passed (113)`, `Tests  1287 passed (1287)`, exit 0 — the T-010 characterization suite `__tests__/page.test.tsx` passes unmodified (11 tests)
+- `pnpm --filter web lint` (`eslint . --max-warnings=52`) → `✖ 36 problems (0 errors, 36 warnings)`, exit 0
+- `pnpm --filter web typecheck` (`tsc -p tsconfig.json --noEmit`) → no errors, exit 0
 
 ## Rollback
 
