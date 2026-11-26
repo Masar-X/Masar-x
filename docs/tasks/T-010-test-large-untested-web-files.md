@@ -74,6 +74,10 @@ Scope (step 3): the six step-1 priorities are covered - `profile/page.tsx` (15 t
 
 CI (PR #345, head 93a7656, run 45722701654): all checks pass - `test` (1m26s), `next build`, `docs-lint`, `workspaces`, `deno-check`, `db-verify`, `translations`, `deps-audit (critical gate)`, `gitleaks-artifacts`, `ai-endpoint-grep`, `workflow-lint`, `fallow-audit (report-only)`, `mobile`, Vercel deploy.
 
+Flake follow-up (subject-page suite): CI flagged `selecting a lecture from the dashboard pushes the URL and opens the detail view` once under coverage. Root cause: RTL queries run outside `act`, so `findBy` can resolve before the dashboard commit's passive effects flush (React 19 schedules them as a separate scheduler task); the navigation then raced those effects, whose stale params closure re-nulled the lecture selection. The four select-driven tests now settle that effect chain with `await act` + a macrotask tick before navigating, and the post-navigation assertions await the settled view with an explicit 5s window (the push assertion is unchanged). Verification: before the fix the failure reproduced twice in ~30 local single-file runs; after it, 17 consecutive clean runs of the file (12 plain, 4 with `vitest run --coverage`, e.g. `Test Files  1 passed (1) / Tests  12 passed (12)`), full `pnpm --filter web test` 113 files / 1287 tests passed, `node scripts/tasks.mjs lint` OK.
+
+CI (PR #345, head 74b4004, run 45731431107): all checks pass - `test` (1m9s), `next build` (54s), `e2e` (2m12s), `mobile` (57s), `workspaces` (39s), `ESLint` (31s), `docs-lint`, `deno-check`, `db-verify`, `translations`, `deps-audit (critical gate)`, `gitleaks-artifacts`, `ai-endpoint-grep`, `workflow-lint`, `fallow-audit (report-only)`, Vercel deploy.
+
 ## Rollback
 
 Move newly added test files to `.trash/` per I9 (`git status` clean, existing suites untouched).
