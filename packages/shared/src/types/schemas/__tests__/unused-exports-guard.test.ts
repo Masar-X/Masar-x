@@ -7,21 +7,45 @@
  * `Validated*` types + 3 `Waitlist*` row types declared but never
  * imported) before it can land again.
  *
- * This is a coarse lexical check — it grep-matches identifier names
- * rather than building a real import graph. False positives are
- * possible if an identifier name happens to match a comment or a
+ * This is a coarse lexical check — it matches identifier names with
+ * `RegExp(`\\b${symbol}\\b`)` over every `.ts`/`.tsx` file under apps/
+ * and packages/ rather than building a real import graph. False positives
+ * are possible if an identifier name happens to match a comment or a
  * string literal elsewhere; that's acceptable for the cost.
+ *
+ * The scan is a pure-Node recursive walk (`node:fs`) instead of a `grep`
+ * shell-out: `grep` is absent from a default Windows PATH, which made
+ * this guard fail on every Windows machine (execSync threw, every symbol
+ * looked unreferenced, and the first one aborted the test).
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
 
 const SCHEMAS_FILE = path.resolve(
   __dirname,
   '..',
   'index.ts',
 );
+
+/**
+ * Recursively collect `.ts`/`.tsx` files under `dir`, skipping
+ * `node_modules` (the `grep -r` baseline skipped the symlinked
+ * dependency installs; source references never live in dependencies).
+ */
+function collectSourceFiles(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...collectSourceFiles(full));
+    } else if (/\.(ts|tsx)$/.test(entry.name)) {
+      found.push(full);
+    }
+  }
+  return found;
+}
 
 describe('schemas/index.ts — no dead exports', () => {
   it('every exported symbol is referenced somewhere in the monorepo', () => {
@@ -43,27 +67,30 @@ describe('schemas/index.ts — no dead exports', () => {
     const testRel = path.relative(repoRoot, __filename).replace(/\\/g, '/');
     const allowedNonConsuming = new Set([schemasRel, testRel]);
 
+    // One read pass over both source trees; every symbol is then matched
+    // against the cached contents (the per-symbol shell-out also ran grep
+    // once per symbol, making it the dominant cost as well as the
+    // Windows break).
+    const sourceFiles = ['apps', 'packages'].flatMap((root) =>
+      collectSourceFiles(path.join(repoRoot, root)),
+    );
+    const contents = sourceFiles.map((file) => ({
+      rel: path.relative(repoRoot, file).replace(/\\/g, '/'),
+      src: readFileSync(file, 'utf8'),
+    }));
+
     for (const symbol of exports) {
-      // Per-symbol, word-bounded grep. The previous single grep over the
+      // Per-symbol, word-bounded scan. The previous single grep over the
       // union of ALL export names was vacuous: any file referencing one
-      // symbol made every symbol "referenced". Grep exits 1 (and execSync
-      // throws) when there are no matches — that means zero referencing
-      // files for this symbol.
-      let referencingFiles: string[] = [];
-      try {
-        const grep = execSync(
-          `grep -rln --include="*.ts" --include="*.tsx" -E "\\b${symbol}\\b" apps packages`,
-          { cwd: repoRoot, encoding: 'utf8' },
-        );
-        referencingFiles = grep.split('\n').filter(Boolean);
-      } catch {
-        referencingFiles = [];
-      }
+      // symbol made every symbol "referenced".
+      const pattern = new RegExp(`\\b${symbol}\\b`);
+      const referencingFiles = contents
+        .filter((f) => pattern.test(f.src))
+        .map((f) => f.rel);
 
       // Find at least one referencing file outside the allowed set.
       const hasExternalConsumer = referencingFiles.some((f) => {
-        const norm = f.replace(/\\/g, '/');
-        return !allowedNonConsuming.has(norm);
+        return !allowedNonConsuming.has(f);
       });
       if (!hasExternalConsumer) {
         throw new Error(

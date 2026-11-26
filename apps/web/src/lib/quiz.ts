@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { startOrResumeQuizAttempt } from 'masarx-shared/quiz';
 
 // quiz_attempts row shape (generated schema); startOrResumeAttempt's RPC
 // returns jsonb and is cast to this.
@@ -252,16 +253,11 @@ export class QuizService {
     // attempt or inserts one, and a concurrent start losing the unique-index
     // race adopts the winner's row (no check-then-insert window).
     async startOrResumeAttempt(quizId: string, _userId: string) {
-        const { data, error } = await supabase.rpc('start_quiz_attempt', {
-            p_quiz_id: quizId,
-        });
-
-        if (error) throw error;
-
+        // Shared start_quiz_attempt RPC wrapper (masarx-shared/quiz):
         // jsonb return shaped as the quiz_attempts row; the caller reads
         // id/started_at. Ownership comes from auth.uid() inside the RPC —
         // _userId is kept only for call-site symmetry.
-        return data as QuizAttemptRow;
+        return startOrResumeQuizAttempt<QuizAttemptRow>(supabase, quizId);
     }
 
     // Save a single answer

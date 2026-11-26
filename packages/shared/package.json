@@ -17,13 +17,15 @@
     "./ai": "./src/ai/index.ts",
     "./ai/*": "./src/ai/*",
     "./i18n": "./src/i18n/index.ts",
-    "./format": "./src/format/index.ts"
+    "./format": "./src/format/index.ts",
+    "./lectures": "./src/lectures/index.ts",
+    "./quiz": "./src/quiz/index.ts"
   },
   "description": "Masar X shared package — translations, types, Supabase client factory, AI client. Consumed by apps/{web,desktop,mobile} via the workspace protocol (research.md §1, §4, §5, §9; contracts/ directory).",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "echo '[shared] ESLint config co-located with consumers (apps/{web,desktop,mobile}/eslint.config.*); shared package sources are linted by the consumer that owns the build.'",
-    "build": "echo '[shared] no build step yet — consumers import directly from main: ./src/index.ts. A tsc-based build will be added when the source tree grows.'",
+    "lint": "eslint .",
+    "build": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

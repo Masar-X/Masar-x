@@ -8,6 +8,8 @@
  *   - types     → database types + Zod schemas
  *   - ai        → sendAiMessage / streamAiMessage (Edge-Function only)
  *   - i18n      -- t() helper + static messages registry (Spec 004 T040)
+ *   - lectures  -- lecture-key matching + content grouping (web/mobile)
+ *   - quiz      -- start_quiz_attempt RPC wrapper (atomic attempt start)
  *
  * Apps MUST NOT import from the underlying packages directly
  * (e.g. @supabase/ssr, openai, @anthropic-ai/sdk). The ESLint

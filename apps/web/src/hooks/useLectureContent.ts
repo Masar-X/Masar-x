@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { inferLectureKeyFromTitle } from "@/utils/lecture-inference";
 import { logger } from "@/lib/logger";
+import { matchesLecture, resolveLectureKey } from "masarx-shared/lectures";
 
 export interface ContentItem {
   id: string;
@@ -37,7 +38,9 @@ export function useLectureContent({
   const [files, setFiles] = useState<ContentItem[]>([]);
   const [quizzes, setQuizzes] = useState<ContentItem[]>([]);
 
-  const lectureKey = (lecture?.lecture_key || "").trim() || "other";
+  // The lecture's effective key: trimmed; empty falls back to "other"
+  // (shared matcher, masarx-shared/lectures).
+  const lectureKey = resolveLectureKey({ lecture_key: lecture?.lecture_key ?? "" });
 
   useEffect(() => {
     if (!show || !subject || !lecture) return;
@@ -109,16 +112,12 @@ export function useLectureContent({
           ]);
 
 
-        const lectureMatch = (row: { lecture_id?: string | null; lecture_key?: string | null; title?: string | null; id: string }) => {
-          // 1. Match by ID (most reliable)
-          if (lecture?.id && row.lecture_id === lecture.id) return true;
-
-          // 2. Match by Key (fallback for older records)
-          if (
-            row.lecture_key &&
-            String(row.lecture_key).trim() === String(lectureKey).trim()
-          )
-            return true;
+        const lectureMatch = (row: { lecture_id?: string | null; lecture_key?: string | null; title: string; id: string }) => {
+          // Tiers 1+2 (lecture_id first, then trimmed lecture_key vs the
+          // lecture's resolved key; key-less rows never key-match) are the
+          // shared matcher in masarx-shared/lectures — the same rules
+          // mobile uses (T-012).
+          if (lecture && matchesLecture(row, lecture)) return true;
 
           // 3. Inference fallback
           try {
