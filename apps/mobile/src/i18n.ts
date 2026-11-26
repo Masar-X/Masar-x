@@ -16,83 +16,22 @@
  * MOBILE_STRINGS supplement for mobile-only UI (tab bar labels, offline
  * banner), pending promotion into the shared registry.
  *
- * The lookup signature matches the shared i18n contract
- * (t(locale, namespace, key, values?)); when packages/shared/src/i18n
- * lands with its "./i18n" export, `translateMessage` below can delegate
- * to it without any call-site changes.
+ * Shared namespaces delegate to masarx-shared/i18n (t()/hasKey()) since
+ * T-012: the JSON imports and the local per-locale REGISTRY this file
+ * used to maintain are gone; only the MOBILE_STRINGS supplement for
+ * mobile-only UI (tab bar labels, offline banner) remains local, pending
+ * promotion into the shared registry.
  */
 import * as Localization from "expo-localization";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import arCommon from "masarx-shared/messages/ar/common.json";
-import arAuth from "masarx-shared/messages/ar/auth.json";
-import arAiAssistant from "masarx-shared/messages/ar/aiAssistant.json";
-import arProfile from "masarx-shared/messages/ar/profile.json";
-import arSubjects from "masarx-shared/messages/ar/subjects.json";
-import arSummaries from "masarx-shared/messages/ar/summaries.json";
-import arQuizzes from "masarx-shared/messages/ar/quizzes.json";
-import arFileDropzone from "masarx-shared/messages/ar/fileDropzone.json";
-import arAuthPages from "masarx-shared/messages/ar/authPages.json";
-import arQuizAttempts from "masarx-shared/messages/ar/quizAttempts.json";
-import arNews from "masarx-shared/messages/ar/news.json";
-import arReviews from "masarx-shared/messages/ar/reviews.json";
-import arErrorBoundary from "masarx-shared/messages/ar/errorBoundary.json";
-import arSchedules from "masarx-shared/messages/ar/schedules.json";
-import enCommon from "masarx-shared/messages/en/common.json";
-import enAuth from "masarx-shared/messages/en/auth.json";
-import enAiAssistant from "masarx-shared/messages/en/aiAssistant.json";
-import enProfile from "masarx-shared/messages/en/profile.json";
-import enSubjects from "masarx-shared/messages/en/subjects.json";
-import enSummaries from "masarx-shared/messages/en/summaries.json";
-import enQuizzes from "masarx-shared/messages/en/quizzes.json";
-import enFileDropzone from "masarx-shared/messages/en/fileDropzone.json";
-import enAuthPages from "masarx-shared/messages/en/authPages.json";
-import enQuizAttempts from "masarx-shared/messages/en/quizAttempts.json";
-import enNews from "masarx-shared/messages/en/news.json";
-import enReviews from "masarx-shared/messages/en/reviews.json";
-import enErrorBoundary from "masarx-shared/messages/en/errorBoundary.json";
-import enSchedules from "masarx-shared/messages/en/schedules.json";
+import { hasKey, t, type I18nNamespace } from "masarx-shared/i18n";
 
 export type Locale = "ar" | "en";
 export type Dir = "rtl" | "ltr";
 export type MessageValues = Record<string, string | number>;
 
 const LOCALE_OVERRIDE_KEY = "masarx_locale_override";
-
-const REGISTRY: Record<Locale, Record<string, unknown>> = {
-  ar: {
-    common: arCommon,
-    auth: arAuth,
-    aiAssistant: arAiAssistant,
-    profile: arProfile,
-    subjects: arSubjects,
-    summaries: arSummaries,
-    quizzes: arQuizzes,
-    fileDropzone: arFileDropzone,
-    authPages: arAuthPages,
-    quizAttempts: arQuizAttempts,
-    news: arNews,
-    reviews: arReviews,
-    errorBoundary: arErrorBoundary,
-    schedules: arSchedules,
-  },
-  en: {
-    common: enCommon,
-    auth: enAuth,
-    aiAssistant: enAiAssistant,
-    profile: enProfile,
-    subjects: enSubjects,
-    summaries: enSummaries,
-    quizzes: enQuizzes,
-    fileDropzone: enFileDropzone,
-    authPages: enAuthPages,
-    quizAttempts: enQuizAttempts,
-    news: enNews,
-    reviews: enReviews,
-    errorBoundary: enErrorBoundary,
-    schedules: enSchedules,
-  },
-};
 
 /**
  * Mobile-only strings (tab bar, offline banner, upload toasts). These
@@ -330,9 +269,12 @@ function interpolate(template: string, values?: MessageValues): string {
  * Shared-contract translation lookup: t(locale, namespace, key, values?).
  *
  * Resolution order:
- *   1. shared namespace JSON (masarx-shared/messages/{locale}/<ns>.json)
+ *   1. shared namespace registry (masarx-shared/i18n — hasKey probes the
+ *      requested locale's table only, so the en fallback inside t() never
+ *      shadows the mobile supplement);
  *   2. mobile-only supplement (MOBILE_STRINGS)
- *   3. the key string itself - the contract's documented fallback for a
+ *   3. opposite-locale rescue (shared registry, then MOBILE_STRINGS)
+ *   4. the key string itself - the contract's documented fallback for a
  *      key missing from the shared files ("fall back to the key string
  *      itself ... and log a warning in dev mode").
  */
@@ -366,9 +308,13 @@ export function translateMessage(
     return key;
   }
   const path = `${namespace}.${key}`;
-  const fromShared = lookup(REGISTRY[locale], path);
-  if (typeof fromShared === "string") {
-    return interpolate(fromShared, values);
+  const ns = namespace as I18nNamespace;
+  // Shared registry first: hasKey probes THIS locale's table only (no en
+  // fallback), so the mobile supplement below keeps its historical
+  // priority; t() then resolves + interpolates the same JSON the local
+  // REGISTRY used to duplicate (T-012).
+  if (hasKey(locale, ns, key)) {
+    return t(locale, ns, key, values);
   }
   const fromMobile = lookup(MOBILE_STRINGS[locale], path);
   if (typeof fromMobile === "string") {
@@ -380,7 +326,10 @@ export function translateMessage(
   // Opposite-locale rescue before falling back to the raw key, so a
   // late-added key degrades gracefully instead of showing an identifier.
   const other: Locale = locale === "ar" ? "en" : "ar";
-  const rescue = lookup(REGISTRY[other], path) ?? lookup(MOBILE_STRINGS[other], path);
+  if (hasKey(other, ns, key)) {
+    return t(other, ns, key, values);
+  }
+  const rescue = lookup(MOBILE_STRINGS[other], path);
   if (typeof rescue === "string") {
     return interpolate(rescue, values);
   }
