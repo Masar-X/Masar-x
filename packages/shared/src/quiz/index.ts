@@ -8,7 +8,9 @@
  * (no check-then-insert window). Ownership comes from auth.uid() inside
  * the RPC — never a caller-supplied user id. Web and mobile previously
  * duplicated this call (web) or a racy client-side select-then-insert
- * (mobile); both now go through this wrapper.
+ * (mobile); web now goes through this wrapper, and mobile keeps its
+ * select-then-insert call pending the follow-up switch (its tests pin
+ * that wire shape).
  */
 import type { SupabaseClient } from "../supabase";
 

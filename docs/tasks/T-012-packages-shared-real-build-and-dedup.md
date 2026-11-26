@@ -60,6 +60,7 @@ evidence: `pnpm --filter masarx-shared typecheck` exit 0 (`tsc --noEmit -p tscon
 evidence: `pnpm --filter mobile test` exit 0 — Test Files 16 passed (16), Tests 129 passed | 1 skipped (130), including the `translateMessage` mobile-namespace regression suite against the delegated lookup; `pnpm --filter web test` exit 0 — Test Files 113 passed (113), Tests 1287 passed (1287), including `QuizService.startOrResumeAttempt` (RPC shape asserted through the shared wrapper) and `useLectureContent` 3-tier matcher tests.
 - [x] `pnpm typecheck && pnpm --filter mobile export` — exits 0
 evidence: `pnpm typecheck` exit 0 — `pnpm -r --if-present typecheck`: apps/desktop Done, packages/shared Done, apps/mobile Done, apps/web Done; `pnpm --filter mobile export` exit 0 — `expo export --platform android` Metro bundle proof resolving the new `masarx-shared/i18n` / `masarx-shared/lectures` subpath imports.
+- Mobile bundle note: the shared i18n registry now ships in the mobile bundle (190,430 B of JSON measured at this commit, ~186 KiB raw; APK delta not measured). Follow-up: lazy-load the registry per namespace and quantify the APK delta.
 
 ## Evidence
 
