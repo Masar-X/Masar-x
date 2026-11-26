@@ -14,7 +14,7 @@ estimate: 0.5d
 ## Context
 
 - [VERIFIED] Scanning `docs/` finds **167** unchecked `- [ ]` markdown items across 8 files: `docs/design/UIUX_IMPROVEMENT_PLAN.md` (41), `docs/SETUP.md` (39), `docs/releases/CUT-CHECKLIST.md` (33, marked `DEPRECATED 2026-09-20` at `:2,7`), `docs/legacy/REORGANIZATION_PLAN.md` (25), `docs/security/secret-leak-runbook.md` (10), `docs/SMOKE_TEST_REPORT.md` (10), `docs/agents/references/08-precommit.md` (8), and `docs/tasks/_TEMPLATE.md` (1 placeholder example).
-- [VERIFIED] `AGENTS.md:47-82` Active Specs Ledger also tracks 7 "owner owes" items routed to `T-008`.
+- [VERIFIED] The owner-owed items that used to sit in the `AGENTS.md` ledger (7 rows) are now tracked as issues (#283, #289, #314, #308, #319; T-008) — `rg -i owes AGENTS.md` returns nothing.
 - [INFERRED] `docs/` mixes reusable operational runbooks (`08-precommit.md`, `secret-leak-runbook.md`, deprecated `CUT-CHECKLIST.md`) with legacy/planned work (`UIUX_IMPROVEMENT_PLAN.md`, `REORGANIZATION_PLAN.md`), requiring separate `work-item` vs `procedure` tables.
 
 ## Goal
@@ -52,7 +52,7 @@ evidence: `node scripts/tasks.mjs lint` → "tasks:lint OK (24 card(s) checked)"
 ## Evidence
 
 - Scan: `rg -n "^\s*- \[ \]" docs --glob '!docs/tasks/T-*.md'` → 167 items across 8 files (per-file counts tabulated in `docs/tasks/INVENTORY-docs.md`).
-- Row-count cross-check: 41 + 25 + 5 + 39 + 33 + 10 + 5 + 8 + 1 = 167 table rows in `docs/tasks/INVENTORY-docs.md`; status totals 27 already-done / 48 stale / 90 unverified / 2 real, matching the Count Summary.
+- Row-count cross-check: 41 + 25 + 5 + 39 + 33 + 10 + 5 + 8 + 1 = 167 table rows in `docs/tasks/INVENTORY-docs.md`; status totals 27 already-done / 47 stale / 90 unverified / 3 real, matching the Count Summary.
 - `bash .github/scripts/check-doc-links.sh` → `All internal Markdown links resolve.` (exit 0).
 
 ## Rollback

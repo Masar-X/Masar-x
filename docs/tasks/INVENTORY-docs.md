@@ -10,6 +10,8 @@ rg -n "^\s*- \[ \]" docs --glob '!docs/tasks/T-*.md'
 
 167 items across 8 files. Every item is classified below by status (`already-done` / `stale` / `duplicate-of-card` / `unverified` / `real`) and type (`work-item` / `procedure`).
 
+Scope: markdown `- [ ]` items only. Bracketed `[ ]` text without the leading dash (for example `docs/FEATURES.md:203` and `docs/LAUNCH_SIGNOFF.md:25`) is outside this scan.
+
 Status semantics:
 
 - `already-done` — verified against the current tree, evidence cited.
@@ -24,9 +26,9 @@ Items matching `"owner owes..."` are routed to `T-008` and not duplicated here.
 
 | Type | already-done | stale | duplicate-of-card | unverified | real | Total |
 |---|---|---|---|---|---|---|
-| work-item | 25 | 14 | 0 | 30 | 2 | 71 |
+| work-item | 25 | 13 | 0 | 30 | 3 | 71 |
 | procedure | 2 | 34 | 0 | 60 | 0 | 96 |
-| **Total** | **27** | **48** | **0** | **90** | **2** | **167** |
+| **Total** | **27** | **47** | **0** | **90** | **3** | **167** |
 
 Routed to `T-008`: **0**. No checklist item under `docs/` contains an `"owner owes..."` entry (`rg -n "owner owes" docs` matches only task-card prose). The owner-step items live on the `T-008` card (`docs/tasks/T-008-owner-owes-issues.md`) and stay there. Note: the card context cites `AGENTS.md:47-82` as tracking 7 "owner owes" items; on `9d3f635` that section is the Active specs ledger and `rg -i "owes" AGENTS.md` finds no match — the owner steps are tracked on the `T-008` card itself.
 
@@ -122,7 +124,7 @@ Repository reorganization plan. The bulk of the file moves landed; the steps who
 | `docs/legacy/REORGANIZATION_PLAN.md:139` | Move `structure.txt` → `docs/scratch/` | stale | file not in tree |
 | `docs/legacy/REORGANIZATION_PLAN.md:140` | Move `files.txt` → `docs/scratch/` | stale | file not in tree |
 | `docs/legacy/REORGANIZATION_PLAN.md:141` | Move `compare.md` → `docs/scratch/` | stale | file not in tree |
-| `docs/legacy/REORGANIZATION_PLAN.md:147` | Move `proxy.ts` → `scripts/proxy.ts` | stale | no `proxy.ts` anywhere in the tree |
+| `docs/legacy/REORGANIZATION_PLAN.md:147` | Move `proxy.ts` → `scripts/proxy.ts` | stale | the root `proxy.ts` is gone; it lives on at `apps/web/src/proxy.ts` and `apps/web/src/lib/supabase/proxy.ts` |
 | `docs/legacy/REORGANIZATION_PLAN.md:152` | Compress `logo_EN.png` to WebP < 100 KB | already-done | `apps/web/public/logo_EN.webp` (72.7 KB) |
 | `docs/legacy/REORGANIZATION_PLAN.md:153` | Strip raster from `favicon.svg`, < 10 KB | already-done | `apps/web/public/favicon.svg` 9.8 KB; no `data:image`/`<image>` matches |
 | `docs/legacy/REORGANIZATION_PLAN.md:158` | Clean `.windsurf/plans/` | already-done | `.windsurf/` contains only `workflows/review.md`; no `plans/` |
@@ -134,7 +136,7 @@ Follow-ups recorded on the historical smoke-test report for `refactor/supabase-m
 | Source file:line | Summary | Status | Evidence / Card link |
 |---|---|---|---|
 | `docs/SMOKE_TEST_REPORT.md:228` | Remove `image/svg+xml` exclusion; add server-side sanitizer | unverified | no svg exclusion found in the current tree (only `supabase/functions/_shared/tests/upload-file-pure.test.ts:57`); premise needs re-check before acting |
-| `docs/SMOKE_TEST_REPORT.md:229` | Consolidate 6 `as never` casts into `fromTyped<T>()` | stale | no `as never` casts outside tests; loose-typing decision documented at `apps/web/src/lib/supabase/admin.ts:13-18` |
+| `docs/SMOKE_TEST_REPORT.md:229` | Consolidate 6 `as never` casts into `fromTyped<T>()` | real | 5 production `as never` casts exist: `apps/web/src/actions/auth.ts:68,85`, `apps/web/src/actions/profile.ts:38`, `apps/web/src/actions/content.ts:119,172`; the loose-typing decision is documented at `apps/web/src/lib/supabase/admin.ts:13-18` |
 | `docs/SMOKE_TEST_REPORT.md:231` | Drop `serverExternalPackages: ["pg"]` | real | `apps/web/next.config.mjs:57`; no `drizzle-orm/node-postgres` or direct `pg` import found in `apps/web/src` |
 | `docs/SMOKE_TEST_REPORT.md:233` | Delete `src/lib/admin-db/`; remove `drizzle-orm` | real | `apps/web/src/lib/admin-db/schema.ts` exists; `drizzle-orm` at `apps/web/package.json:40`; `ProfileRow` imported by `apps/web/src/contexts/AuthContext.tsx:14`, `apps/web/src/components/AppProviders.tsx:13` |
 | `docs/SMOKE_TEST_REPORT.md:235` | Rewrite `scripts/db-diagnose.cjs` to Supabase JS | stale | script no longer exists (`scripts/` has no `db-diagnose.cjs`) |
@@ -284,5 +286,5 @@ Placeholder example inside the card template (`:36`) — not real work.
 ## Follow-up notes (no action taken here)
 
 - `docs/checklists/` does not exist yet; the proposed consolidations above would create it. Owner decision.
-- The two `real` work items both come from the `SMOKE_TEST_REPORT.md` follow-up block (`:231`, `:233`) and could become one small card (drop unused `serverExternalPackages: ["pg"]`; remove `admin-db/` + `drizzle-orm` including the two `ProfileRow` type imports).
+- The three `real` work items all come from the `SMOKE_TEST_REPORT.md` follow-up block (`:229`, `:231`, `:233`) and could become one small card (drop unused `serverExternalPackages: ["pg"]`; remove `admin-db/` + `drizzle-orm` including the two `ProfileRow` type imports).
 - The `UIUX_IMPROVEMENT_PLAN.md` Phase-5 QA block (29 `unverified` items) is a single manual QA sweep; if the owner still wants it, it fits one card rather than 29.
