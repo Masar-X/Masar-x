@@ -2,7 +2,7 @@
 id: T-011b
 title: "Split profile/page.tsx incrementally (behavior-preserving)"
 priority: P1
-status: todo
+status: done
 depends_on:
   - T-010
 touches:
@@ -37,10 +37,21 @@ Decompose `apps/web/src/app/[locale]/profile/page.tsx` into focused sub-componen
 
 ## Acceptance criteria
 
-- [ ] `wc -l apps/web/src/app/[locale]/profile/page.tsx` — reduced below 300 lines
-- [ ] `pnpm --filter web test && pnpm --filter web lint && pnpm --filter web typecheck` — exits 0
+- [x] `wc -l apps/web/src/app/[locale]/profile/page.tsx` — reduced below 300 lines
+evidence: `wc -l apps/web/src/app/[locale]/profile/page.tsx` → `199 apps/web/src/app/[locale]/profile/page.tsx` (819 lines before the split)
+- [x] `pnpm --filter web test && pnpm --filter web lint && pnpm --filter web typecheck` — exits 0
+evidence: test `Test Files 113 passed (113)` / `Tests 1287 passed (1287)` (T-010 profile suite unmodified); lint `36 problems (0 errors, 36 warnings)` under the `--max-warnings=52` ratchet; typecheck `tsc -p tsconfig.json --noEmit` exit 0 with no output
 
 ## Evidence
+
+All commands run in the task worktree after `pnpm install`:
+
+- `wc -l apps/web/src/app/[locale]/profile/page.tsx` → `199 apps/web/src/app/[locale]/profile/page.tsx`
+- `pnpm --filter web test` → `Test Files  113 passed (113)` / `Tests  1287 passed (1287)` / `Duration 32.41s`
+- `pnpm --filter web lint` → `✖ 36 problems (0 errors, 36 warnings)` (all warnings pre-existing `no-console` hits in `src/lib`; ratchet `--max-warnings=52`)
+- `pnpm --filter web typecheck` → exit 0, no output
+- `node scripts/tasks.mjs lint` → `tasks:lint OK (24 card(s) checked)`
+- `node --test scripts/tasks.test.mjs` → `tests 27 / pass 27 / fail 0`
 
 ## Rollback
 
