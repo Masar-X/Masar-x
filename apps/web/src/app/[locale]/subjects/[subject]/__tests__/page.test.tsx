@@ -258,13 +258,23 @@ describe("SubjectPage", () => {
     seedSubjectData();
     render(<SubjectPage />);
     await screen.findByText("subject-dashboard");
+    // findBy resolves before the dashboard commit's passive effects flush -
+    // React 19 schedules them as a separate scheduler task and RTL runs
+    // queries outside act - so their stale params closure can otherwise land
+    // after the select below. Let that chain settle before navigating.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     act(() => {
       (states.dashboardProps.current as DashboardProps).onSelectLecture("lec-1");
     });
     await waitFor(() =>
       expect(states.routerPush).toHaveBeenCalledWith("/en/subjects/calculus-1/lectures/lec-1", { scroll: false }),
     );
-    expect(await screen.findByText("lecture-detail")).toBeInTheDocument();
+    // The pushed lectureId re-runs the subject fetch (fetchSubjectData deps),
+    // which can briefly re-gate the page on the loading spinner; await the
+    // settled post-navigation view instead of racing findBy's 1s default.
+    expect(await screen.findByText("lecture-detail", {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByText("subject-dashboard")).toBeNull();
   });
 
@@ -289,7 +299,7 @@ describe("SubjectPage", () => {
     await waitFor(() =>
       expect(states.routerPush).toHaveBeenCalledWith("/en/subjects/calculus-1", { scroll: false }),
     );
-    expect(await screen.findByText("subject-dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("subject-dashboard", {}, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it("toggling progress on uncompleted content inserts and toasts confirmation", async () => {
@@ -297,10 +307,13 @@ describe("SubjectPage", () => {
     chain.respondWith({ data: [], error: null }, { table: "user_progress" });
     render(<SubjectPage />);
     await screen.findByText("subject-dashboard");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     act(() => {
       (states.dashboardProps.current as DashboardProps).onSelectLecture("lec-1");
     });
-    await screen.findByText("lecture-detail");
+    await screen.findByText("lecture-detail", {}, { timeout: 5000 });
     await act(async () => {
       await (states.detailProps.current as DetailProps).onToggleProgress("c-9");
     });
@@ -314,10 +327,13 @@ describe("SubjectPage", () => {
     chain.respondWith({ data: [{ content_id: "c-9" }], error: null }, { table: "user_progress" });
     render(<SubjectPage />);
     await screen.findByText("subject-dashboard");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     act(() => {
       (states.dashboardProps.current as DashboardProps).onSelectLecture("lec-1");
     });
-    await screen.findByText("lecture-detail");
+    await screen.findByText("lecture-detail", {}, { timeout: 5000 });
     expect((states.detailProps.current as DetailProps).completedContent.has("c-9")).toBe(true);
     await act(async () => {
       await (states.detailProps.current as DetailProps).onToggleProgress("c-9");
@@ -332,10 +348,13 @@ describe("SubjectPage", () => {
     states.user = null;
     render(<SubjectPage />);
     await screen.findByText("subject-dashboard");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     act(() => {
       (states.dashboardProps.current as DashboardProps).onSelectLecture("lec-1");
     });
-    await screen.findByText("lecture-detail");
+    await screen.findByText("lecture-detail", {}, { timeout: 5000 });
     await act(async () => {
       await (states.detailProps.current as DetailProps).onToggleProgress("c-9");
     });
