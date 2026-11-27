@@ -1,6 +1,7 @@
 "use client";
 
 import { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { supabase } from "@/lib/supabase";
@@ -17,7 +18,9 @@ import type { ChatMessage, ConversationEnsure } from "@/hooks/ai-chat/types";
 // The data access, persistence, streaming and send orchestration live in the
 // ai-chat/ modules next to this file — behavior-preserving split (T-011a);
 // this hook keeps the exact public return surface and callback timing.
-export function useAiChat(user: User | null | undefined, trackEvent: (event: string, properties?: Record<string, unknown>) => void) {
+export function useAiChat(
+  // WS1 (spec 060): accepts the slim RSC user until the client hydrates the full one.
+  user: User | SlimAuthUser | null | undefined, trackEvent: (event: string, properties?: Record<string, unknown>) => void) {
   const locale = useLocale();
   const t = useTranslations("aiAssistant");
   const [messages, setMessages] = useState<ChatMessage[]>([]);

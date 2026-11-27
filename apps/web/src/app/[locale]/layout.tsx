@@ -7,6 +7,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { type ReactNode } from "react";
 import { isAdminRole } from "@/lib/auth/roles";
+import { toSlimAuthUser } from "@/lib/slimAuthUser";
 import { getRepoStars } from "@/lib/github-stars";
 import { logger } from "@/lib/logger";
 
@@ -126,7 +127,11 @@ export default async function LocaleLayout({
     >
       <AppProviders
         dir={dir}
-        user={user}
+        // WS1 (spec 060): serialize only the auth fields any client consumer
+        // reads (id/email, app_metadata.role, user_metadata profile bits) —
+        // the full User with identities/factors never enters the RSC payload.
+        // The client replaces this with the full User post-mount.
+        user={user ? toSlimAuthUser(user) : null}
         profile={profile}
         isAdmin={isAdmin}
         repoStars={repoStars}

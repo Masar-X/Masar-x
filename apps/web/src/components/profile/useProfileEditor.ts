@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import type { SupabaseClient } from "masarx-shared/supabase";
 import { toast } from "sonner";
 import { ProfileFormSchema } from "@/lib/validation/profile";
 
 interface UseProfileEditorArgs {
   supabase: SupabaseClient;
-  user: User | null;
+  // WS1 (spec 060): the context user is User | SlimAuthUser until the client
+  // hydrates the full one; only user.id is read here.
+  user: User | SlimAuthUser | null;
   displayName: string;
 }
 

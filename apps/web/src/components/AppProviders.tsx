@@ -10,6 +10,7 @@ import { Layout } from "@/components/Layout";
 import { Toaster } from "sonner";
 import { QueryProvider } from "@/components/QueryProvider";
 import { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import { ProfileRow } from "@/lib/admin-db/schema";
 import { DesktopShellGate } from "@/components/desktop/DesktopShellGate";
 import { CustomTitlebar } from "@/components/desktop/CustomTitlebar";
@@ -18,7 +19,9 @@ import { UpdateToast } from "@/components/desktop/UpdateToast";
 type Props = {
   children: ReactNode;
   dir: "rtl" | "ltr";
-  user: User | null;
+  // WS1 (spec 060): the server passes the slim subset; AuthProvider widens
+  // to the full User client-side.
+  user: User | SlimAuthUser | null;
   profile: ProfileRow | null;
   isAdmin: boolean;
   /** Live repo star count from the server layout (spec 054); forwarded to the footer's star badge. */

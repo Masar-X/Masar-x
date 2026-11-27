@@ -6,7 +6,7 @@
 // visibility via profile updates, sign-out navigation and the mobile
 // drawer's Escape handling.
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { setMockIntlLocale, nextIntlMockFactory } from "@/test/mocks/next-intl";
 
 const { chain, states } = await vi.hoisted(async () => {
@@ -286,9 +286,13 @@ describe("AppNav", () => {
     expect(states.routerPush).toHaveBeenCalledWith("/");
   });
 
-  it("the mobile logo opens the drawer immediately and Escape closes it", () => {
+  it("the mobile logo opens the drawer immediately and Escape closes it", async () => {
     render(<AppNav />);
     fireEvent.click(screen.getByRole("button", { name: "mobileNav.openMenuAriaLabel" }));
+    // WS1 (spec 060): MobileNav is code-split behind a first-open latch, so
+    // the (test-mocked) chunk resolves asynchronously on the FIRST open;
+    // later opens mount synchronously from the cached module.
+    await waitFor(() => expect(states.mobileProps.current).not.toBeNull());
     expect((states.mobileProps.current as MobileProps).isMobileMenuOpen).toBe(true);
     expect(document.body.style.overflow).toBe("hidden");
     act(() => {

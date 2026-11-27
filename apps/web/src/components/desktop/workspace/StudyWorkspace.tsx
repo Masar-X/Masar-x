@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import { trackFileDownload } from "@/lib/metrics-client";
 import { LectureListColumn } from "./LectureListColumn";
 import { ReaderToolbar } from "./ReaderToolbar";
@@ -33,7 +34,7 @@ import type { StudyWorkspaceProps } from "./types";
  */
 
 interface StudyWorkspaceComponentProps extends StudyWorkspaceProps {
-  user: User | null;
+  user: User | SlimAuthUser | null;
   trackEvent: (eventName: string, metadata?: Record<string, unknown>) => void;
 }
 

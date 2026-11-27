@@ -141,18 +141,28 @@ export default function AiAssistantPage() {
     if (lastUser) void sendMessage(lastUser.content, selectedModel);
   }, [messagesRef, sendMessage, selectedModel]);
 
-  const { subjects: studentSubjects } = useSubjects();
+  const [generatedQuiz, setGeneratedQuiz] = useState<LocalGeneratedQuiz | null>(
+    null,
+  );
+
+  // WS1 (spec 060): subjects + quizzes feed only ChatHeader's student_agent
+  // pickers (they render when mode === "student_agent" or a generated quiz
+  // exists — LocalQuizPreviewModal takes neither). Defer both fetches until
+  // that state is actually active instead of paying the full-table quizzes
+  // select on every page load; the first switch into the mode pays the fetch.
+  const studentPickersActive =
+    mode === "student_agent" || generatedQuiz !== null;
+  const { subjects: studentSubjects } = useSubjects({
+    enabled: studentPickersActive,
+  });
   const [studentSelectedQuizId, setStudentSelectedQuizId] = useState("");
   const { quizzes: studentQuizzes, loading: studentQuizzesLoading } =
-    useQuizzes();
+    useQuizzes({ enabled: studentPickersActive });
 
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [showPuterSettings, setShowPuterSettings] = useState(false);
   const [showGeneratedQuizModal, setShowGeneratedQuizModal] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [generatedQuiz, setGeneratedQuiz] = useState<LocalGeneratedQuiz | null>(
-    null,
-  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null!);
 

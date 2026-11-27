@@ -6,6 +6,7 @@
 // T-009 ratchet fails lint for any new browser-client importer).
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import type { SupabaseClient } from "masarx-shared/supabase";
 import { aiAssistant } from "@/lib/ai-assistant";
 import type { AiAssistantMode, AiChatHistoryTurn } from "@/lib/ai-assistant";
@@ -24,7 +25,8 @@ import type { ChatMessage, ConversationEnsure } from "./types";
 
 export interface SendMessageDeps {
   supabase: SupabaseClient;
-  user: User | null | undefined;
+  // WS1 (spec 060): accepts the slim RSC user until the client hydrates the full one.
+  user: User | SlimAuthUser | null | undefined;
   isLoading: boolean;
   mode: AiAssistantMode;
   studentSelectedSubject: string;
