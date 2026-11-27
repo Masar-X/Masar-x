@@ -52,7 +52,7 @@ Enforce non-regressing Vitest coverage threshold ratchets across all 4 workspace
 - [x] `pnpm --filter web test:coverage && pnpm --filter desktop test:coverage && pnpm --filter mobile test:coverage && pnpm --filter masarx-shared test:coverage` — all 4 exit 0 enforcing non-zero `coverage.thresholds`
   evidence: after adding `thresholds` to the 4 vitest configs, all four `test:coverage` runs exit 0 locally (WEB=0 DESKTOP=0 MOBILE=0 SHARED=0); per-workspace totals unchanged vs the measured baseline — web L84.24/B73.71/F77.51/S82.2, desktop L80.24/B75.16/F73.46/S78.37, mobile L80.35/B65.44/F82.22/S77.91, masarx-shared L99.39/B88.73/F90/S99.28 — each ≥ its floor (measured − 2)
 - [x] `rg -l "page\.route|context\.route" apps/web/e2e/*.spec.ts | wc -l` — reduced below 24/27 with unmocked public-read specs passing against real CI Supabase seed data
-  evidence: `git grep -l -E "page\.route|context\.route" -- apps/web/e2e/*.spec.ts` → 19 files (was 24); fully unmocked: news-faq, subjects-levels, subjects-catalog (anon), materials, footer, lecture-detail; downloads shell + trw-pages anon gate run unmocked (those files keep mocks only for the waitlist POST / authed member variants); the e2e suite runs against the real seed only in CI (this PR's e2e job)
+  evidence: `git grep -l -E "page\.route|context\.route" -- apps/web/e2e/*.spec.ts` → 19 files (was 24); fully unmocked: news-faq, subjects-levels, subjects-catalog (anon), materials, footer, lecture-detail; downloads shell + trw-pages anon gate run unmocked (those files keep mocks only for the waitlist POST / authed member variants); the converted specs passed against the real CI seed data: the PR's `e2e` job green (run 45937076987, 2m27s)
 
 ## Evidence
 
@@ -63,7 +63,7 @@ Enforce non-regressing Vitest coverage threshold ratchets across all 4 workspace
 - Route-mock file count 24 → 19 of 27.
 - Gates (all run locally, real exits): `pnpm --filter web typecheck` → 0; `pnpm --filter web test` → 113 files / 1287 tests passed; `pnpm --filter web lint` → 0 errors, 36 warnings (budget 52); `pnpm exec eslint e2e` → clean.
 - Seed grounding (read-only anon REST against the CI project): 27 subjects, 24 approved quizzes, 9 subject_lectures, 3 published trw_categories, `default_semester` = 2, `trw_courses` not exposed to anon REST, `trw_memberships` empty for anon.
-- e2e leg runs in CI only (the `e2e` job builds with the public Supabase variables and runs `pnpm --filter web test:e2e`); local runs lack the gitignored env files — CI result recorded on this PR's checks.
+- e2e leg runs in CI only (the `e2e` job builds with the public Supabase variables and runs `pnpm --filter web test:e2e`); local runs lack the gitignored env files. Result: the PR's `e2e` check passed (2m27s) — all converted specs green against the live seed.
 
 ## Rollback
 
