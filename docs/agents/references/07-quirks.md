@@ -7,4 +7,4 @@
 - **Hardcoded strings prohibition**: any Arabic string inside `.tsx`/`.ts` that's not in `messages/ar/*.json` is a defect — migrate on touch.
 - **Supabase migrations**: since the spec-031 consolidation, migrations are timestamped and append-only from `20261031000000_baseline.sql` (a production-schema snapshot) — not sequential `NNN_name.sql`. A new migration takes a fresh `YYYYMMDDHHMMSS_name.sql` prefix matching the production migration ledger row (apply via the Supabase MCP `apply_migration`, never by hand); never edit an applied migration — fix forward — and never resurrect the old numbered chain (archived under `supabase/migrations-archive/numbered-chain-001-019/` for archaeology only).
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

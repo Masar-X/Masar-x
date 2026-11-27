@@ -10,7 +10,7 @@ description: "DEPRECATED (2026-09-20): historical checklist for the retired two-
 **Time budget**: 12-15 min total (7-8 min is the build, the rest is human/check time).
 **Required access**: GitHub CLI auth with `repo` scope on `fotedev/Masar-x-next` and `fotedev/masarx-releases`.
 
-This checklist is **pipeline-agnostic** in structure (pre-flight → trigger → watch → verify → smoke → finalize), but the concrete commands are wired for the **public-runner pipeline** at `fotedev/masarx-releases`. See AGENTS.md §"Public Runner pipeline" for the architecture and the `release.yml.disabled` file in the private source for the legacy pipeline.
+This checklist is **pipeline-agnostic** in structure (pre-flight → trigger → watch → verify → smoke → finalize), but the concrete commands are wired for the **public-runner pipeline** at `fotedev/masarx-releases`. See [02-release-pipeline.md](../agents/references/02-release-pipeline.md) for the architecture and the `release.yml.disabled` file in the private source for the legacy pipeline.
 
 ---
 
@@ -63,7 +63,7 @@ The workflow has 4 critical steps (others are housekeeping):
 - [ ] **Step 9: "Mirror release tag to this repo"** — succeeds (writes `versions/vX.Y.Z.txt` marker commit, force-pushes the tag to `masarx-releases` so electron-builder can attach a release to it)
 - [ ] **Step 10: "Build & Publish Desktop installers"** — succeeds (electron-builder runs NSIS + Portable, uploads to the GitHub Release that the tag-mirror just enabled)
 
-**Gotcha to watch for**: `pnpm/action-setup@v4` may fail with `No pnpm version is specified` if the workflow's runner CWD is not the source root. The public-runner workflow checks the source out into `source-code/`, so the workflow already pins `version: 9.15.4` explicitly. If the version pin is removed in a future workflow edit, this step will fail with the same error — see AGENTS.md gotcha #18.
+**Gotcha to watch for**: `pnpm/action-setup@v4` may fail with `No pnpm version is specified` if the workflow's runner CWD is not the source root. The public-runner workflow checks the source out into `source-code/`, so the workflow already pins `version: 9.15.4` explicitly. If the version pin is removed in a future workflow edit, this step will fail with the same error — see [01-gotchas.md](../agents/references/01-gotchas.md) §18.
 
 If any step fails, jump to **§6. Rollback** before continuing.
 
@@ -211,11 +211,11 @@ When all checkboxes in §0-5 are ticked, the release is complete. Total wall tim
 
 ## Cross-references
 
-- AGENTS.md §"Public Runner pipeline" — architecture of the build pipeline
-- AGENTS.md §"Release distribution" — why there are two repos (private source, public releases)
-- AGENTS.md gotcha #16 — GitHub Releases on a private repo are private
-- AGENTS.md gotcha #17 — `artifactName` and `/releases/latest/download/<name>` literal URL matching
-- AGENTS.md gotcha #18 — `pnpm/action-setup@v4` CWD pitfall
+- [02-release-pipeline.md](../agents/references/02-release-pipeline.md) — architecture of the build pipeline
+- [02-release-pipeline.md](../agents/references/02-release-pipeline.md) §"Release distribution" — why there are two repos (private source, public releases)
+- [01-gotchas.md](../agents/references/01-gotchas.md) §16 — GitHub Releases on a private repo are private
+- [01-gotchas.md](../agents/references/01-gotchas.md) §17 — `artifactName` and `/releases/latest/download/<name>` literal URL matching
+- [01-gotchas.md](../agents/references/01-gotchas.md) §18 — `pnpm/action-setup@v4` CWD pitfall
 - `electron-builder.yml` — the `nsis.artifactName: "${productName}-Setup-${arch}.${ext}"` is what makes the `latest.yml` reference a static filename across releases
 
 ## Versioning

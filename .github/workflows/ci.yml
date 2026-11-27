@@ -134,6 +134,9 @@ jobs:
           CHECK_CHANGELOG: ${{ github.event_name == 'pull_request' }}
         run: node scripts/check-versions.mjs
 
+      - name: Check specs/ directory numbers
+        run: node scripts/check-spec-prefixes.mjs
+
       - name: Setup pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       - name: Setup Node.js

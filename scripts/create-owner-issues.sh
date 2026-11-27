@@ -6,8 +6,8 @@
 # without touching GitHub. Pass --apply to actually create the issues.
 # --apply is intended for the repository owner (tracked in #319).
 #
-# Items that already have a ticket are NOT re-created here; the AGENTS.md
-# ledger rows point at them directly:
+# Items that already have a ticket are NOT re-created here; the
+# docs/spec-ledger.md rows point at them directly:
 #   schedules data swap        -> #283
 #   SEND_EMAIL_HOOK_SECRET     -> #289 (step-by-step runbook: #314)
 #   Authenticode signing,
@@ -101,7 +101,7 @@ Verify first: #290 (2026-11-22 sweep) records the ai-chat redeploy as done, with
 
 Edge functions are deployed by hand. Folded follow-up from the same 055 row: when roadmap doc 02 lands anu-x, write the ANU-X promptPlatformName strings + one edge id-map entry.
 
-Source: AGENTS.md rows [050-zane-prompt-injection-hardening] + [055-brand-string-sweep] - merged into one issue per T-008 step 1; summarize-chat from specs/050-zane-prompt-injection-hardening/plan.md (T4).
+Source: docs/spec-ledger.md rows [050-zane-prompt-injection-hardening] + [055-brand-string-sweep] - merged into one issue per T-008 step 1; summarize-chat from specs/050-zane-prompt-injection-hardening/plan.md (T4).
 ISSUE_EOF
 )"
 
@@ -112,7 +112,7 @@ The faculty deployment needs its own backend and hosting: a new Supabase project
 
 BIS preset official naming is tracked separately in #289 (the same decision gates ANU-X doc-02) and is not part of this issue.
 
-Source: AGENTS.md row [052-faculty-white-label]; specs/052-faculty-white-label/spec.md.
+Source: docs/spec-ledger.md row [052-faculty-white-label]; specs/052-faculty-white-label/spec.md.
 ISSUE_EOF
 )"
 
@@ -121,9 +121,9 @@ issue "Verify the reset-password recovery flow in production after #308 (spec 05
 
 Spec 056 flagged that the web client's detectSessionInUrl auto-exchanged the recovery code when /reset-password loaded, so the page's own submit exchange could never succeed. #308 fixed it (detectSessionInUrl disabled at load; the reset page owns the exchange).
 
-Verify in production: request a password recovery, open the emailed link, set a new password, and confirm the reset succeeds without an expired-link error. If it works, record the verification in the AGENTS.md ledger row [056-web-e2e-gap-close] and close this issue.
+Verify in production: request a password recovery, open the emailed link, set a new password, and confirm the reset succeeds without an expired-link error. If it works, record the verification in the docs/spec-ledger.md row [056-web-e2e-gap-close] and close this issue.
 
-Source: AGENTS.md row [056-web-e2e-gap-close]; fix in #308.
+Source: docs/spec-ledger.md row [056-web-e2e-gap-close]; fix in #308.
 ISSUE_EOF
 )"
 

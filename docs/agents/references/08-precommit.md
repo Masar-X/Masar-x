@@ -11,4 +11,4 @@ Before opening a PR:
 - [ ] If you touched `supabase/`: new migration is timestamped `YYYYMMDDHHMMSS_name.sql` in `supabase/migrations/` (legacy sequential `NNN_` chain archived at `supabase/migrations-archive/numbered-chain-001-019/`)
 - [ ] If you touched `ThemeScript.tsx`: re-read [01-gotchas.md](./01-gotchas.md) §19 before any change
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

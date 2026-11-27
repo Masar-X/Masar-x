@@ -97,4 +97,4 @@ branch the network-mock design makes unnecessary).
    entries) — kill the node PID and, with owner approval per I9, move `apps/web/.next` to `.trash/` before blaming the
    suite ([01-gotchas.md §24](./01-gotchas.md)).
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

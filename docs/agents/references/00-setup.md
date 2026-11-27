@@ -10,6 +10,6 @@ pnpm dev                       # http://localhost:3000
 
 `SUPABASE_SERVICE_ROLE_KEY` must be set in **Vercel production env** (not just `.env.local`) — see [01-gotchas.md §6](./01-gotchas.md). Verify with `pnpm typecheck && pnpm lint && pnpm test`. Browser e2e: `pnpm test:e2e` (Playwright; fresh worktrees need `apps/web/.env.local` copied in first — [12-e2e-testing.md](./12-e2e-testing.md)).
 
-Full human setup walkthrough (689 lines, may lag behind this file): [`docs/SETUP.md`](../../SETUP.md). This file is the source of truth for agent prerequisites.
+Full human setup walkthrough (concise, kept current per PR): [`docs/SETUP.md`](../../SETUP.md). This file is the source of truth for prerequisites.
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

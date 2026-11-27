@@ -26,4 +26,4 @@ The user approves the spec before implementation begins.
 - Routine i18n extraction batches, typo fixes, and simple lint fixes do **not** need a separate spec.
 - They still require a short **inline plan** (e.g. a plan-mode plan) presented to and approved by the user immediately before execution.
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)
