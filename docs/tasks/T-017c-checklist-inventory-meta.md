@@ -2,7 +2,7 @@
 id: T-017c
 title: "Inventory and classify .specify/ and .github/ checklists into INVENTORY-meta.md"
 priority: P1
-status: todo
+status: done
 depends_on: []
 touches:
   - "docs/tasks/INVENTORY-meta.md"
@@ -43,11 +43,18 @@ Scan `.specify/` and `.github/` checklists and produce `docs/tasks/INVENTORY-met
 
 ## Acceptance criteria
 
-- [ ] `test -f docs/tasks/INVENTORY-meta.md && rg -n "Count Summary|work-item|procedure|procedure/template|unverified|T-008" docs/tasks/INVENTORY-meta.md` — file exists with separate `work-item` and `procedure` tables, `.specify/templates/*.md` consolidated as one `procedure/template` row, `unverified` status support, count summary, and `T-008` routing
-- [ ] `git diff --name-only origin/main -- ':!docs/tasks/INVENTORY-meta.md'` — contains no unintended edits
-- [ ] `pnpm tasks:lint` — exits 0
+- [x] `test -f docs/tasks/INVENTORY-meta.md && rg -n "Count Summary|work-item|procedure|procedure/template|unverified|T-008" docs/tasks/INVENTORY-meta.md` — file exists with separate `work-item` and `procedure` tables, `.specify/templates/*.md` consolidated as one `procedure/template` row, `unverified` status support, count summary, and `T-008` routing
+evidence: bash: `test -f docs/tasks/INVENTORY-meta.md && rg -n "Count Summary|work-item|procedure|procedure/template|unverified|T-008" docs/tasks/INVENTORY-meta.md` → exit 0; matches include :27 (`## Count Summary`), :31-32 (work-item/procedure totals), :35 (consolidated procedure/template note), :37 (T-008 routing), :50 (`## work-item`), :54 (`## procedure`), :70-94 (`unverified` rows)
+- [x] `git diff --name-only origin/main -- ':!docs/tasks/INVENTORY-meta.md'` — contains no unintended edits
+evidence: `git diff --name-only origin/main -- ':!docs/tasks/INVENTORY-meta.md'` → `docs/tasks/T-017c-checklist-inventory-meta.md` (this card's own status/evidence edit, per protocol); no other paths
+- [x] `pnpm tasks:lint` — exits 0
+evidence: `node scripts/tasks.mjs lint` → `tasks:lint OK (24 card(s) checked)`, exit 0
 
 ## Evidence
+
+- Scan: `rg --no-ignore -n "^\s*- \[ \]" .specify .github` → 58 items across 4 files (`.specify/templates/tasks-template.md` 34, `.specify/templates/checklist-template.md` 6, `.github/PULL_REQUEST_TEMPLATE.md` 13, `.github/ISSUE_TEMPLATE/feature_request.md` 5); row-count cross-check 34 + 6 + 13 + 5 = 58, matching the Count Summary (40 stale boilerplate + 18 unverified template rows).
+- The card's scan command as written (plain `rg -n "^\s*- \[ \]" .specify .github`) returns 0 matches — `.gitignore:208-225` ignores both trees while their files are tracked; the scan needs `--no-ignore` (documented in the inventory).
+- `bash .github/scripts/check-doc-links.sh` → `All internal Markdown links resolve.` (exit 0).
 
 ## Rollback
 
