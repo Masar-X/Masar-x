@@ -13,10 +13,10 @@ Read-only inventory of every unchecked `- [ ]` markdown item under `specs/` (no 
 | Status | work-item | procedure | total |
 |---|---:|---:|---:|
 | already-done | 210 | 36 | 246 |
-| stale | 25 | 26 | 51 |
+| stale | 24 | 26 | 50 |
 | duplicate-of-card | 2 | 0 | 2 |
 | unverified | 27 | 37 | 64 |
-| real | 40 | 0 | 40 |
+| real | 41 | 0 | 41 |
 | **total** | **304** | **99** | **403** |
 
 Routed to `T-008` (`owner owes...` items): **0**.
@@ -72,7 +72,7 @@ Routed to `T-008` (`owner owes...` items): **0**.
 | `specs/001-critical-security-fixes/tasks.md:175` | T043 Execute manual test checklist from quickstart.md Testing Security Fixes section (middleware, logger, AI … | unverified | manual checklist from quickstart; no recorded pass |
 | `specs/001-critical-security-fixes/tasks.md:176` | T044 Verify CSP headers in production build response using `curl -I` per quickstart.md Post-deploy Verification | unverified | curl -I against prod; not run in this inventory |
 | `specs/001-critical-security-fixes/tasks.md:177` | T045 [P] Update `.env.example` or environment documentation with new required variables … | already-done | docs/spec-completion-dashboard.md §3 row 001 — 96% (24/25), artifacts cited |
-| `specs/001-critical-security-fixes/tasks.md:178` | T046 Run `src/scripts/auth-route-check.mjs` to verify all API routes use `getUser()` not `getSession()` | stale | script src/scripts/auth-route-check.mjs absent from main (git ls-files: 0 hits) |
+| `specs/001-critical-security-fixes/tasks.md:178` | T046 Run `src/scripts/auth-route-check.mjs` to verify all API routes use `getUser()` not `getSession()` | real | the spec's `src/scripts/...` path is stale — the script is tracked at `apps/web/scripts/auth-route-check.mjs`; its `--scan-api` mode ran here: 7 API `route.ts` files, 0 `getSession(` occurrences (exit 0); the live-redirect mode was not run (needs a server) |
 | `specs/002-fix-production-errors/tasks.md:10` | T001 [P] Implement DB health check route in `src/app/api/health/db/route.ts` to verify `DATABASE_URL_IPV4` … | already-done | docs/spec-completion-dashboard.md §3 row 002 — 92.9% (13/14), artifacts cited |
 | `specs/002-fix-production-errors/tasks.md:11` | T002 Update `src/lib/admin-db/db.ts` to include explicit production warnings for IPv6 direct connections and handle … | stale | admin-db/db.ts removed as verified dead code — commit 296902e (fallow round 2, #107) |
 | `specs/002-fix-production-errors/tasks.md:12` | T003 [P] Add detailed server-side error logging in `src/actions/auth.ts` while returning sanitized error messages. | already-done | docs/spec-completion-dashboard.md §3 row 002 — 92.9% (13/14), artifacts cited |
@@ -440,4 +440,5 @@ Routed to `T-008` (`owner owes...` items): **0**.
 - `specs/008` is a special case: the dashboard records it 0% (2026-09-18), but the table/RLS/index landed afterwards via the spec-031 baseline consolidation (`20261031000000_baseline.sql`) and the 100-cap/prune via `apps/web/src/lib/chat-pagination.ts`; the remaining genuinely open piece is the dedicated guest-cache unit test.
 - `specs/017` is the largest verified-open cluster: phase 3 + the Puter adapter landed (#54, #61), but the fallback policy (`policy.ts`/`registry.ts`), contract tests, and the `assistant.ts`/`useAiChat` wiring are still absent (`rg runWithFallback` → 0 hits).
 - Non-goals respected: no `T-XXX` cards created; no files under `specs/`, `docs/tasks/INVENTORY-docs.md` (T-017b) or `docs/tasks/INVENTORY-meta.md` (T-017c) touched.
+- Path-renames to keep in mind while reading dashboard-anchored rows: `src/middleware.ts` maps to `apps/web/src/proxy.ts` (Next 16 renamed middleware to proxy), and `apps/web/src/lib/cloudinary.ts` no longer carries `cloudName` — the `already-done` substance was verified against the current tree.
 

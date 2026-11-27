@@ -61,7 +61,7 @@ evidence: `node scripts/tasks.mjs lint` → `tasks:lint OK (24 card(s) checked)`
   - `rg -n "^\s*- \[ \]" specs` → **403** items in **37** files
   - `Get-ChildItem specs -Directory` → **61** spec directories; `Get-ChildItem specs -Recurse -Filter *.md` → **149** markdown files
   - `rg -i "owner owes"` over the 403 enumerated items → **0** matches, so nothing routes to `T-008` from this inventory
-- Resulting classification (`docs/tasks/INVENTORY-specs.md` Count Summary): already-done 246, stale 51, duplicate-of-card 2, unverified 64, real 40 — work-item 304, procedure 99.
+- Resulting classification (`docs/tasks/INVENTORY-specs.md` Count Summary): already-done 246, stale 50, duplicate-of-card 2, unverified 64, real 41 — work-item 304, procedure 99.
 - `bash .github/scripts/check-doc-links.sh` → `All internal Markdown links resolve.` (exit 0)
 
 ## Rollback
