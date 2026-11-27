@@ -9,7 +9,19 @@ import { confirmToast } from "../lib/confirmToast";
 // Keep track of the inflight request to deduplicate simultaneous calls
 let inflightRequest: Promise<QuizWithRatings[]> | null = null;
 
-export function useQuizzes() {
+export interface UseQuizzesOptions {
+    /**
+     * WS1 (spec 060): gate the mount fetch. ai-assistant passes false until
+     * the student_agent pickers are actually active (mode === "student_agent"
+     * or a generated quiz exists) — the full quizzes_with_ratings select was
+     * paid on every page load for data only those pickers read. Default true
+     * keeps every existing consumer (admin) unchanged.
+     */
+    enabled?: boolean;
+}
+
+export function useQuizzes(options: UseQuizzesOptions = {}) {
+    const { enabled = true } = options;
     const t = useTranslations("quizzes");
     const tCommon = useTranslations("common");
     const [quizzes, setQuizzes] = useState<QuizWithRatings[]>([]);
@@ -112,8 +124,9 @@ export function useQuizzes() {
     };
 
     useEffect(() => {
+        if (!enabled) return;
         fetchQuizzes();
-    }, [fetchQuizzes]);
+    }, [fetchQuizzes, enabled]);
 
     return {
         quizzes,

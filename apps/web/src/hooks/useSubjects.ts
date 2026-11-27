@@ -27,6 +27,12 @@ type UseSubjectsParams = {
    * consumers (home page, admin) keep the default profile-scoped behavior.
    */
   allLevels?: boolean;
+  /**
+   * WS1 (spec 060): external gate ANDed with the internal query gate.
+   * ai-assistant defers the fetch until the student_agent pickers are
+   * active; every existing consumer keeps the default true.
+   */
+  enabled?: boolean;
 };
 
 export function useSubjects(params: UseSubjectsParams = {}) {
@@ -69,7 +75,10 @@ export function useSubjects(params: UseSubjectsParams = {}) {
     // Admins manage every subject regardless of their own academic profile —
     // scoping the admin grid to the signed-in admin's level/semester hid
     // subjects they had just created (MVP launch blocker).
-    enabled: isAdmin ? true : allLevels || (!academicLoading && params.level !== null),
+    // WS1 (spec 060): params.enabled ANDs the caller's deferral gate.
+    enabled:
+      (params.enabled ?? true) &&
+      (isAdmin ? true : allLevels || (!academicLoading && params.level !== null)),
     staleTime: 5 * 60 * 1000, // 5 minutes (standardized)
     queryFn: async () => {
       try {

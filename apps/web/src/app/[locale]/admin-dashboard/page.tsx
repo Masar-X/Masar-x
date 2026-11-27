@@ -2,26 +2,14 @@
 
 import { useState, useMemo, memo, useEffect, type ComponentProps } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { useSummaries } from "@/hooks/useSummaries";
 import { useSubjects } from "@/hooks/useSubjects";
 import { useNews } from "@/hooks/useNews";
 import { useAppeals } from "@/hooks/useAppeals";
 import { useQuizzes } from "@/hooks/useQuizzes";
-import { NewsTab } from "@/components/NewsTab";
-import { AppealsTab } from "@/components/AppealsTab";
-import { QuizzesTab } from "@/components/QuizzesTab";
-import { AddNewsModal } from "@/components/AddNewsModal";
-import { AdminAnalyticsPage } from "./AdminAnalyticsPage";
-import { PageManagementTab } from "@/components/PageManagementTab";
-import {
-  CoursesEnrollmentsView,
-  type CoursesTabCourse,
-} from "@/components/admin/CoursesEnrollmentsView";
-import { AddCourseModal } from "@/components/AddCourseModal";
-import { SubjectsTab } from "@/components/SubjectsTab";
-import { AddSubjectModal } from "@/components/AddSubjectModal";
-import { ManageLecturesModal } from "@/components/ManageLecturesModal";
+import type { CoursesTabCourse } from "@/components/admin/CoursesEnrollmentsView";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminFilters } from "@/hooks/useAdminFilters";
 import { AdminDashboardHeader } from "@/components/admin/AdminDashboardHeader";
@@ -32,15 +20,15 @@ import type { SummaryWithRatings } from "@/types/database";
 import { usePathname } from "next/navigation";
 
 type SubjectsTabSubject = Parameters<
-  NonNullable<ComponentProps<typeof SubjectsTab>["onEdit"]>
+  NonNullable<ComponentProps<typeof LazySubjectsTab>["onEdit"]>
 >[0];
 
 type EditingSubject = NonNullable<
-  ComponentProps<typeof AddSubjectModal>["editingSubject"]
+  ComponentProps<typeof LazyAddSubjectModal>["editingSubject"]
 >;
 
 type SubjectInsert = Parameters<
-  ComponentProps<typeof AddSubjectModal>["onSave"]
+  ComponentProps<typeof LazyAddSubjectModal>["onSave"]
 >[0] & { created_at?: string | null };
 
 type EditingCourse = {
@@ -51,13 +39,73 @@ type EditingCourse = {
   is_academic?: boolean | null;
 };
 
-// Memoized tab components to prevent unnecessary re-renders
-const MemoizedNewsTab = memo(NewsTab);
-const MemoizedAppealsTab = memo(AppealsTab);
-const MemoizedQuizzesTab = memo(QuizzesTab);
-const MemoizedPageManagementTab = memo(PageManagementTab);
-const MemoizedAdminAnalyticsPage = memo(AdminAnalyticsPage);
-const MemoizedSubjectsTab = memo(SubjectsTab);
+// WS1 (spec 060, audit ADMIN-1): every tab/modal chunk ships code-split via
+// next/dynamic, mirroring the quizzes/ai-assistant page precedents. ssr:false
+// is safe here (unlike the SPLIT-1 lesson in Layout.tsx, which applies to
+// always-visible chrome): AdminDashboardContent renders only after the
+// isMounted + auth spinner gate below, so the lazy chunks are post-gate
+// content. memo(dynamic(...)) keeps the old re-render guard on top of the
+// lazy chunk. AdminOverviewTab stays static — it is the landing tab, and
+// splitting it would trade first-paint latency for nothing.
+const LazyNewsTab = memo(
+  dynamic(() => import("@/components/NewsTab").then((m) => m.NewsTab), {
+    ssr: false,
+  }),
+);
+const LazyAppealsTab = memo(
+  dynamic(() => import("@/components/AppealsTab").then((m) => m.AppealsTab), {
+    ssr: false,
+  }),
+);
+const LazyQuizzesTab = memo(
+  dynamic(() => import("@/components/QuizzesTab").then((m) => m.QuizzesTab), {
+    ssr: false,
+  }),
+);
+const LazyPageManagementTab = memo(
+  dynamic(
+    () => import("@/components/PageManagementTab").then((m) => m.PageManagementTab),
+    { ssr: false },
+  ),
+);
+const LazyAdminAnalyticsPage = memo(
+  dynamic(
+    () => import("./AdminAnalyticsPage").then((m) => m.AdminAnalyticsPage),
+    { ssr: false },
+  ),
+);
+const LazySubjectsTab = memo(
+  dynamic(() => import("@/components/SubjectsTab").then((m) => m.SubjectsTab), {
+    ssr: false,
+  }),
+);
+const LazyCoursesEnrollmentsView = memo(
+  dynamic(
+    () =>
+      import("@/components/admin/CoursesEnrollmentsView").then(
+        (m) => m.CoursesEnrollmentsView,
+      ),
+    { ssr: false },
+  ),
+);
+// Modals mount only while open — an always-mounted dynamic modal would load
+// its chunk up front and save nothing (same render gate as the quizzes page).
+const LazyAddNewsModal = dynamic(
+  () => import("@/components/AddNewsModal").then((m) => m.AddNewsModal),
+  { ssr: false },
+);
+const LazyAddCourseModal = dynamic(
+  () => import("@/components/AddCourseModal").then((m) => m.AddCourseModal),
+  { ssr: false },
+);
+const LazyAddSubjectModal = dynamic(
+  () => import("@/components/AddSubjectModal").then((m) => m.AddSubjectModal),
+  { ssr: false },
+);
+const LazyManageLecturesModal = dynamic(
+  () => import("@/components/ManageLecturesModal").then((m) => m.ManageLecturesModal),
+  { ssr: false },
+);
 
 function AdminDashboard() {
   const t = useTranslations("adminDashboard");
@@ -249,12 +297,12 @@ function AdminDashboardContent() {
               onAddSubject={handleCreateSubject}
             />
             {/* Usage analytics (RPC) composed into the same landing view. */}
-            <MemoizedAdminAnalyticsPage />
+            <LazyAdminAnalyticsPage />
           </>
         );
       case "courses_enrollments":
         return adminRole === "doctor" ? (
-          <CoursesEnrollmentsView
+          <LazyCoursesEnrollmentsView
             onCreateCourse={handleCreateCourse}
             onEditCourse={handleEditCourse}
           />
@@ -265,7 +313,7 @@ function AdminDashboardContent() {
         );
       case "subjects":
         return (
-          <MemoizedSubjectsTab
+          <LazySubjectsTab
             subjects={subjectsHook.subjects}
             onRefresh={() => subjectsHook.fetchSubjects()}
             onEdit={handleEditSubject}
@@ -275,7 +323,7 @@ function AdminDashboardContent() {
         );
       case "news":
         return (
-          <MemoizedNewsTab
+          <LazyNewsTab
             news={filteredNews}
             onToggleStatus={newsHook.toggleNewsStatus}
             onSetShowAddNews={newsHook.setShowAddNews}
@@ -284,7 +332,7 @@ function AdminDashboardContent() {
         );
       case "appeals":
         return (
-          <MemoizedAppealsTab
+          <LazyAppealsTab
             appeals={filteredAppeals}
             onAcceptAppeal={appealsHook.acceptAppeal}
             onRejectAppeal={appealsHook.rejectAppeal}
@@ -293,7 +341,7 @@ function AdminDashboardContent() {
         );
       case "quizzes":
         return (
-          <MemoizedQuizzesTab
+          <LazyQuizzesTab
             quizzes={filteredQuizzes}
             onDeleteQuiz={quizzesHook.deleteQuiz}
             onUpdateStatus={quizzesHook.updateStatus}
@@ -301,7 +349,7 @@ function AdminDashboardContent() {
         );
       case "page_management":
         return adminRole === "doctor" ? (
-          <MemoizedPageManagementTab />
+          <LazyPageManagementTab />
         ) : (
           <div className="p-8 text-center text-gray-500">
             {t("noAccess.pageManagement")}
@@ -356,54 +404,62 @@ function AdminDashboardContent() {
         </div>
       )}
 
-      <AddNewsModal
-        showAddNews={newsHook.showAddNews}
-        newNews={newsHook.newNews}
-        onSetShowAddNews={newsHook.setShowAddNews}
-        onSetNewNews={newsHook.setNewNews}
-        onAddNews={(newsData, fileUrl, imageUrls, customCategory) =>
-          newsHook.addNews(
-            {
-              ...newsData,
-              subject: globalFilters.subject || newsData.subject,
-              department: globalFilters.department || newsData.department,
-              year: globalFilters.year || newsData.year,
-            },
-            fileUrl,
-            imageUrls,
-            customCategory,
-          )
-        }
-      />
+      {newsHook.showAddNews ? (
+        <LazyAddNewsModal
+          showAddNews={newsHook.showAddNews}
+          newNews={newsHook.newNews}
+          onSetShowAddNews={newsHook.setShowAddNews}
+          onSetNewNews={newsHook.setNewNews}
+          onAddNews={(newsData, fileUrl, imageUrls, customCategory) =>
+            newsHook.addNews(
+              {
+                ...newsData,
+                subject: globalFilters.subject || newsData.subject,
+                department: globalFilters.department || newsData.department,
+                year: globalFilters.year || newsData.year,
+              },
+              fileUrl,
+              imageUrls,
+              customCategory,
+            )
+          }
+        />
+      ) : null}
 
-      <AddCourseModal
-        showAddCourse={showAddCourse}
-        editingCourse={editingCourse}
-        onClose={() => {
-          setShowAddCourse(false);
-          setEditingCourse(null);
-        }}
-        onSave={handleSaveCourse}
-      />
+      {showAddCourse ? (
+        <LazyAddCourseModal
+          showAddCourse={showAddCourse}
+          editingCourse={editingCourse}
+          onClose={() => {
+            setShowAddCourse(false);
+            setEditingCourse(null);
+          }}
+          onSave={handleSaveCourse}
+        />
+      ) : null}
 
-      <AddSubjectModal
-        show={showAddSubject}
-        editingSubject={editingSubject}
-        onClose={() => {
-          setShowAddSubject(false);
-          setEditingSubject(null);
-        }}
-        onSave={handleSaveSubject}
-      />
+      {showAddSubject ? (
+        <LazyAddSubjectModal
+          show={showAddSubject}
+          editingSubject={editingSubject}
+          onClose={() => {
+            setShowAddSubject(false);
+            setEditingSubject(null);
+          }}
+          onSave={handleSaveSubject}
+        />
+      ) : null}
 
-      <ManageLecturesModal
-        show={showManageLectures}
-        subjectName={selectedSubjectForLectures}
-        onClose={() => {
-          setShowManageLectures(false);
-          setSelectedSubjectForLectures("");
-        }}
-      />
+      {showManageLectures ? (
+        <LazyManageLecturesModal
+          show={showManageLectures}
+          subjectName={selectedSubjectForLectures}
+          onClose={() => {
+            setShowManageLectures(false);
+            setSelectedSubjectForLectures("");
+          }}
+        />
+      ) : null}
     </div>
     </AdminLayout>
   );

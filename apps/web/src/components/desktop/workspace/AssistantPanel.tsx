@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, type ClipboardEvent, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import type { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import { FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAiChat } from "@/hooks/useAiChat";
@@ -39,7 +40,7 @@ interface AssistantPanelProps {
     lectureTitle: string | null;
     lectureId: string | null;
   };
-  user: User | null;
+  user: User | SlimAuthUser | null;
   trackEvent: (eventName: string, metadata?: Record<string, unknown>) => void;
 }
 

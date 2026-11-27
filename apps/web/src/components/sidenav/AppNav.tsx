@@ -2,6 +2,7 @@
 
 import { Fragment, memo, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "@/navigation";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useLocale, useTranslations } from "next-intl";
@@ -9,9 +10,19 @@ import { logger } from "@/lib/logger";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { DynamicLogo } from "@/components/DynamicLogo";
-import { MobileNav } from "@/components/header/MobileNav";
 import { SecretAccessGate } from "@/components/header/SecretAccessGate";
 import { SideNav } from "./SideNav";
+
+// WS1 (spec 060, audit BUNDLE-2): MobileNav (341 lines + framer-motion)
+// renders only the mobile drawer, so it is code-split out of the initial
+// AppNav chunk and mounted behind a first-open latch — re-opens reuse the
+// loaded chunk and the closed state costs nothing. ssr:false matches the
+// pattern AppNav itself is mounted with in Layout.tsx. The escape/scroll-lock
+// effects below stay here, so gating the render does not move behavior.
+const MobileNav = dynamic(
+  () => import("@/components/header/MobileNav").then((m) => m.MobileNav),
+  { ssr: false },
+);
 
 export const SIDENAV_EXPANDED_KEY = "masarx_sidenav_expanded";
 /** Rail width shared with Layout's content padding via a root CSS variable. */
@@ -31,6 +42,7 @@ export const AppNav = memo(function AppNav() {
   const dir = locale === "ar" ? "rtl" : "ltr";
   const { user, profile: authProfile, loading, isAdmin, signOut } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mobileNavEverOpened, setMobileNavEverOpened] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [sidenavExpanded, setSidenavExpanded] = useState(false);
 
@@ -87,6 +99,11 @@ export const AppNav = memo(function AppNav() {
       return next;
     });
   };
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    setMobileNavEverOpened(true);
+  }, [isMobileMenuOpen]);
 
   useEffect(() => {
     if (!isMounted) return;
@@ -415,24 +432,26 @@ export const AppNav = memo(function AppNav() {
         </button>
       </header>
 
-      <MobileNav
-        dir={dir}
-        isMounted={isMounted}
-        isMobileMenuOpen={isMobileMenuOpen}
-        setIsMobileMenuOpen={setIsMobileMenuOpen}
-        mobileBackdropRef={mobileBackdropRef}
-        primaryNavItems={primaryNavItems}
-        handleNavigate={handleNavigate}
-        isTRWVisible={isTRWVisible}
-        currentPage={currentPage}
-        loading={loading}
-        user={user}
-        isAdmin={isAdmin}
-        isAdminLoading={false}
-        handleSignOut={handleSignOut}
-        tNav={tNav}
-        tMobileNav={tMobileNav}
-      />
+      {mobileNavEverOpened ? (
+        <MobileNav
+          dir={dir}
+          isMounted={isMounted}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+          mobileBackdropRef={mobileBackdropRef}
+          primaryNavItems={primaryNavItems}
+          handleNavigate={handleNavigate}
+          isTRWVisible={isTRWVisible}
+          currentPage={currentPage}
+          loading={loading}
+          user={user}
+          isAdmin={isAdmin}
+          isAdminLoading={false}
+          handleSignOut={handleSignOut}
+          tNav={tNav}
+          tMobileNav={tMobileNav}
+        />
+      ) : null}
     </Fragment>
   );
 });

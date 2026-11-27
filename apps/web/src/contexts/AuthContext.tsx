@@ -21,10 +21,11 @@ import { cleanupOldLocalStorage } from '@/lib/storage-cleanup';
 import { ACADEMIC_FETCH_KEY, USER_ACADEMIC_CACHE_KEY } from '@/lib/academic-utils';
 import { queryClient } from '@/components/QueryProvider';
 import { queryCache } from '@/lib/queryCache';
+import type { SlimAuthUser } from '../lib/slimAuthUser';
 import { useLocale } from "next-intl";
 
 interface AuthContextType {
-  user: User | null;
+  user: User | SlimAuthUser | null;
   session: Session | null;
   profile: ProfileRow | null;
   isAdmin: boolean;
@@ -44,11 +45,14 @@ export function AuthProvider({
   initialIsAdmin = false,
 }: {
   children: ReactNode;
-  initialUser?: User | null;
+  // WS1 (spec 060): the server layout hands over a slim subset; the client
+  // replaces it with the full Supabase User post-mount (initializeAuth /
+  // onAuthStateChange), so the context value widens to the union.
+  initialUser?: SlimAuthUser | null;
   initialProfile?: ProfileRow | null;
   initialIsAdmin?: boolean;
 }) {
-  const [user, setUser] = useState<User | null>(initialUser);
+  const [user, setUser] = useState<User | SlimAuthUser | null>(initialUser);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(initialProfile);
   const [isAdmin, setIsAdmin] = useState<boolean>(initialIsAdmin);
@@ -75,7 +79,7 @@ export function AuthProvider({
   // Spec 034 Track D: latest-user mirror for the []-dep auth listener —
   // the TOKEN_REFRESHED skip compares against this without adding `user`
   // to the effect deps (which would resubscribe on every auth change).
-  const userRef = useRef<User | null>(initialUser);
+  const userRef = useRef<User | SlimAuthUser | null>(initialUser);
 
   const triggerSync = useCallback(async (userId: string, force: boolean = false) => {
     const now = Date.now();

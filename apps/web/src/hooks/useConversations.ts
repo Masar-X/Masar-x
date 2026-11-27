@@ -1,6 +1,7 @@
 "use client";
 
 import { User } from "@supabase/supabase-js";
+import type { SlimAuthUser } from "@/lib/slimAuthUser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { AiAssistantMode } from "@/lib/ai-assistant";
@@ -19,7 +20,11 @@ import { logger } from "@/lib/logger";
  * Plain state like useAiChat (no TanStack): the list is small, paged with the
  * same range/short-page contract as the message history.
  */
-export function useConversations(user: User | null | undefined, mode: AiAssistantMode) {
+// WS1 (spec 060): accepts the slim RSC user until the client hydrates the full one.
+export function useConversations(
+  user: User | SlimAuthUser | null | undefined,
+  mode: AiAssistantMode,
+) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
