@@ -28,7 +28,7 @@ export const SecretAccessGate: FC<SecretAccessGateProps> = ({
           className="fixed inset-0 z-[200] bg-black flex items-center justify-center overflow-hidden font-mono"
           dir="ltr"
         >
-          <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+          <div className="absolute inset-0 opacity-20 bg-[url('/textures/carbon-fibre.png')]" />
           <div className="relative text-center space-y-8 p-4">
             <div className="flex justify-center gap-1">
               {"Welcome to the real world".split("").map((char, i) => (

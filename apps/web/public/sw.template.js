@@ -17,6 +17,21 @@ const isDev = (url) => {
     url.hostname.endsWith(".local");
 };
 
+// Self-identifying offline fallback. An empty `new Response("", { status: 504 })`
+// surfaces in DevTools as the opaque "504 ()" — indistinguishable from a real
+// gateway timeout and hard to triage. The statusText/body/header make every
+// SW-manufactured failure instantly recognizable. A factory (not a shared
+// instance) is required: a Response body can only be consumed once.
+const offlineFallback = () =>
+  new Response("masarx-sw: offline fallback", {
+    status: 504,
+    statusText: "SW Offline Fallback",
+    headers: {
+      "content-type": "text/plain",
+      "x-masarx-sw": "offline-fallback",
+    },
+  });
+
 // تثبيت Service Worker
 // Pre-cache removed: every request now uses an explicit strategy below.
 // Manifest + favicon are cheap to cache at runtime when first requested.
@@ -98,7 +113,7 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         } catch (err) {
-          return cached || new Response("", { status: 504 });
+          return cached || offlineFallback();
         }
       })()
     );
@@ -129,7 +144,7 @@ self.addEventListener("fetch", (event) => {
         const cached = await caches.match(request);
         if (cached) return cached;
         if (request.destination === "document") return caches.match("/");
-        return new Response("", { status: 504 });
+        return offlineFallback();
       }
     })()
   );

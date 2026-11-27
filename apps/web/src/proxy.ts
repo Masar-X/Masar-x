@@ -86,7 +86,6 @@ export function getCspHeader(nonce: string, host: string | null = null): string 
       "wss://*.puter.com",
       "https://lottie.host",
       "https://cdn.jsdelivr.net",
-      "https://www.transparenttextures.com",
     ].join(" "),
 
     // frame-src: YouTube embeds + Cloudinary document reader iframes
