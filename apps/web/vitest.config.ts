@@ -17,8 +17,13 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 60_000,
     // Spec 040: coverage reporter pinned so coverage-summary.json always
-    // exists for the CI artifact (report-only — no thresholds).
-    coverage: { reporter: ['text', 'json-summary'] },
+    // exists for the CI artifact. T-016 ratchet: thresholds sit 2 points
+    // under the measured baseline (web: L84.24/B73.71/F77.51/S82.2 measured on
+    // 2026-11-27) so CI stays green today while blocking regressions.
+    coverage: {
+      reporter: ['text', 'json-summary'],
+      thresholds: { lines: 82.2, branches: 71.7, functions: 75.5, statements: 80.2 },
+    },
     // masarx-shared is a workspace symlink exporting raw .ts — inline it
     // so vite transforms the source instead of handing it to node (which
     // cannot load .ts from a package "exports" entry). String form:

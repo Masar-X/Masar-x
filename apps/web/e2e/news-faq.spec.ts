@@ -1,23 +1,28 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * News shell + FAQ accordion — spec 056.
+ * News shell + FAQ accordion — spec 056, real-data variant (T-016).
  *
  * News is SSR-data + client-shell: the RSC page fetches `news` SERVER-side
- * (unmockable via page.route) and seeds the client hook, so data-dependent
- * assertions are FORBIDDEN — this spec pins the shell only (title, category
- * chips, search input, anon login-to-add CTA) plus a client-side filter
- * click that must not crash. The news list content varies with the dev
- * server's real Supabase data by design.
+ * and seeds the client hook via initialData (staleTime 5m — no client
+ * refetch on mount), so data-dependent assertions stay FORBIDDEN — this
+ * spec pins the shell only (title, category chips, search input, anon
+ * login-to-add CTA) plus a client-side filter click that must not crash.
+ * The news list content varies with the server's real Supabase data by
+ * design.
  *
  * FAQ is fully static (4 hardcoded items, ids whatIsMasarx/approvalProcess/
  * accountRequired/reportIssue) — asserted via aria-expanded/aria-controls,
  * no i18n strings needed. First item open by default.
  *
- * Mocked: anon auth pair, catch-all rest/v1 → [], platform_settings
- * (single object).
+ * Unmocked (T-016): no route mocks — the anonymous shell requests
+ * (the platform_settings hydration gate) flow through to the real backend;
+ * a no-session browser never calls /auth/v1. The signed-in add-news flow is
+ * out of scope here (authed renders need the seeded-cookie contract, which
+ * the server rejects — spec 056).
  *
- * Local dev compile cost: 120s timeout (quiz-finish precedent).
+ * Local dev compile cost: 120s timeout (quiz-finish precedent; CI is a
+ * prebuilt `next start`).
  */
 
 test.setTimeout(120_000);
@@ -27,23 +32,8 @@ const NEWS_TITLE = "الأخبار";
 const LOGIN_TO_ADD = "تسجيل الدخول لإضافة خبر";
 const FAQ_TITLE = "الأسئلة الشائعة";
 
-async function seedAnonymousShell(page: import("@playwright/test").Page) {
-  await page.route("**/rest/v1/**", (route) => route.fulfill({ json: [] }));
-  await page.route("**/rest/v1/platform_settings*", (route) =>
-    route.fulfill({ json: { key: "default_semester", value: "1" } }),
-  );
-  await page.route("**/auth/v1/user", (route) =>
-    route.fulfill({ json: { id: null, email: null, aud: null } }),
-  );
-  await page.route("**/auth/v1/token*", (route) =>
-    route.fulfill({ json: { error: "no_session" } }),
-  );
-}
-
 test.describe("news (shell, anonymous)", () => {
   test("renders the shell, filters interact without crashing", async ({ page }) => {
-    await seedAnonymousShell(page);
-
     await page.goto("/ar/news", { waitUntil: "domcontentloaded" });
     await page.waitForRequest("**/rest/v1/platform_settings*", { timeout: 45_000 });
 
@@ -69,8 +59,6 @@ test.describe("faq (static)", () => {
   test("renders the accordion with the first item open and toggles another", async ({
     page,
   }) => {
-    await seedAnonymousShell(page);
-
     await page.goto("/ar/faq", { waitUntil: "domcontentloaded" });
     await page.waitForRequest("**/rest/v1/platform_settings*", { timeout: 45_000 });
 
