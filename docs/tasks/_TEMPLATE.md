@@ -13,8 +13,8 @@ estimate: 0.5d # split cards bigger than ~1d
 
 ## Context
 
-- [VERIFIED] Cite exact `file:line` observed in the worktree.
-- [INFERRED] Note any unverified/runtime-only assumptions clearly.
+- Observed: cite exact `file:line` observed in the worktree.
+- Assumption: note any unverified/runtime-only assumptions clearly.
 
 ## Goal
 

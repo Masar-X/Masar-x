@@ -2,7 +2,7 @@
 id: T-019
 title: "Neutral wording in task docs and PR template"
 priority: P1
-status: todo
+status: done
 depends_on: []
 touches:
   - "docs/tasks/README.md"
@@ -38,12 +38,20 @@ Task-board docs and the PR template read like ordinary engineering documentation
 
 <!-- Rule: `- [x]` is allowed ONLY when the very next line is `evidence: <command + output>` (enforced by `pnpm tasks:lint`). -->
 
-- [ ] `rg -n -i "agent|NOT verify" .github/PULL_REQUEST_TEMPLATE.md docs/tasks/README.md docs/tasks/PROJECT.md docs/tasks/_TEMPLATE.md` returns no matches
-- [ ] `pnpm tasks:lint` and `pnpm tasks:test` pass
+- [x] `rg -n -i "agent|NOT verify" .github/PULL_REQUEST_TEMPLATE.md docs/tasks/README.md docs/tasks/PROJECT.md docs/tasks/_TEMPLATE.md` returns no matches
+evidence: `rg -n -i "agent|NOT verify" .github/PULL_REQUEST_TEMPLATE.md docs/tasks/README.md docs/tasks/PROJECT.md docs/tasks/_TEMPLATE.md` -> no output, exit code 1 (no matches)
+- [x] `pnpm tasks:lint` and `pnpm tasks:test` pass
+evidence: `node scripts/tasks.mjs lint` -> "tasks:lint OK (24 card(s) checked)", exit 0; `node --test scripts/tasks.test.mjs` -> tests 27, pass 27, fail 0, exit 0 (package.json maps tasks:lint / tasks:test to exactly these commands)
 
 ## Evidence
 
-<!-- Leave empty until the finishing PR; paste exact commands and outputs for each checked item above. -->
+Commands run on the edited tree in the task-T-019 worktree (worktree has no node_modules; `package.json` maps `tasks:lint` -> `node scripts/tasks.mjs lint` and `tasks:test` -> `node --test scripts/tasks.test.mjs`, so the node invocations are the pnpm script commands verbatim):
+
+- `bash .github/scripts/check-doc-links.sh` -> `All internal Markdown links resolve.` (exit 0)
+- `node scripts/tasks.mjs lint` -> `tasks:lint OK (24 card(s) checked)` (exit 0)
+- `node --test scripts/tasks.test.mjs` -> `tests 27 / pass 27 / fail 0` (exit 0)
+- `rg -n -i "agent|NOT verify" .github/PULL_REQUEST_TEMPLATE.md docs/tasks/README.md docs/tasks/PROJECT.md docs/tasks/_TEMPLATE.md` -> no output, exit code 1 (no matches)
+- Line budgets after the change: `docs/tasks/README.md` 40 lines (max 60); `docs/tasks/PROJECT.md` 28 lines (max 30, unchanged).
 
 ## Rollback
 
