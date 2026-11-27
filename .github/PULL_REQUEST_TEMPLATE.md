@@ -32,9 +32,9 @@ Closes #<issue> <!-- omit if no tracking issue -->
 - [ ] `pnpm test`
 - [ ] Manually verified in the running app
 
-## What I did NOT verify
+## Follow-ups
 
-<!-- Explicitly list checks, environments, or platforms not tested in this PR (or `None`). -->
+<!-- List follow-up work or checks not covered by this PR (or `None`). -->
 
 ## Owner actions needed
 
@@ -45,4 +45,3 @@ Closes #<issue> <!-- omit if no tracking issue -->
 - [ ] New environment variables are documented in `.env.example` with scope comments; no real secrets committed
 - [ ] Changes touching `packages/shared/` state whether a cross-platform contract is affected ([contracts](../specs/004-multi-platform-expansion/contracts/README.md))
 - [ ] Spec-affecting changes update the relevant files under `specs/`
-- [ ] I have read and followed the [Code of Conduct](../CODE_OF_CONDUCT.md) and [Contributing guide](../CONTRIBUTING.md)

@@ -14,7 +14,7 @@ Frontmatter `status` may only be `todo` or `done` (set `status: done` only in th
 
 ## Branch, Worktree & Claim Rules
 
-- **One session = one card = one branch = one PR.** Split cards larger than ~1 day before starting.
+- **One task = one card = one branch = one PR.** Split cards larger than ~1 day before starting.
 - **Fixed branch name:** `task/T-XXX` (no slug).
 - **Worktree isolation (I14):** work only in `../masarx-wt/task-T-XXX`; never edit in the primary checkout.
 - **Atomic claim before any work:** always run `pnpm tasks:next` (never pick cards manually).
