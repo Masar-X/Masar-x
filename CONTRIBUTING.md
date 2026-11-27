@@ -11,6 +11,7 @@ Thanks for contributing. This document covers the workflows specific to this mon
 - [Adding a new user story](#adding-a-new-user-story)
 - [Before you open a PR](#before-you-open-a-pr)
 - [CI gates](#ci-gates)
+- [Credit & recognition](#credit--recognition)
 - [Licensing](#licensing)
 
 ## Development setup
@@ -112,6 +113,15 @@ CI (`.github/workflows/ci.yml`) runs the following 14 jobs on every PR against `
 | `workflow-lint` | actionlint validation of every file in `.github/workflows/` |
 | `deps-audit` | Production-dependency audit — fails on critical/high advisories not on the accepted-GHSA list |
 | `fallow-audit` | Dead-code health report (report-only, non-gating) |
+
+## Credit & recognition
+
+Your name stays on your work. This is policy, not goodwill:
+
+- **A merged pull request keeps its author.** The squash-merge commit preserves the author identity of the PR, and the PR reference in the merge commit title links back to your PR on your profile.
+- **A superseded fork PR is never closed silently.** Fork pull requests from read-level collaborators cannot run this repository's required CI gates (the e2e job needs repository Variables, and the Vercel deployment check needs team authorization). If the maintainers land your change upstream instead of merging the PR directly, the upstream commit carries a `Co-authored-by:` trailer with your stated email and your contribution is recorded in [CONTRIBUTORS.md](./CONTRIBUTORS.md), attributed to your original PR.
+- **`CONTRIBUTORS.md` is the public record.** Everyone whose code has landed — directly merged or superseded upstream — is listed there with the PRs that carry their work, plus a per-email handle file under [`contributors/emails/`](./contributors/emails/) (one file named for each email your landed commits use, containing your GitHub handle).
+- **Want your PRs to merge directly?** Ask a maintainer for write access: with repository write you can open PRs from branches in this repository, the required checks run on them, and your pull requests merge under your own authorship without any supersession step. (For GitHub's contribution graph to credit a co-authored commit, the email in the trailer must be added to your GitHub account under *Settings → Emails*; the `username@users.noreply.github.com` form works without that.)
 
 ## Licensing
 
