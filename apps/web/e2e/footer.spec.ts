@@ -36,8 +36,6 @@ test.describe("footer route scope (web mode)", () => {
   });
 
   test("footer privacy link resolves to /privacy-policy (hotfix: /privacy was 404)", async ({ page }) => {
-    await mockGuestApi(page);
-
     await page.goto("/en", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
     const footer = page.locator("footer");
@@ -49,8 +47,6 @@ test.describe("footer route scope (web mode)", () => {
   });
 
   test("legacy /privacy redirects to /privacy-policy (bookmarks + cached prefetches)", async ({ page }) => {
-    await mockGuestApi(page);
-
     await page.goto("/en/privacy", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/en\/privacy-policy$/);
     await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
