@@ -35,6 +35,27 @@ test.describe("footer route scope (web mode)", () => {
     }
   });
 
+  test("footer privacy link resolves to /privacy-policy (hotfix: /privacy was 404)", async ({ page }) => {
+    await mockGuestApi(page);
+
+    await page.goto("/en", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
+    const footer = page.locator("footer");
+    await expect(footer, "/en keeps the footer").toBeVisible({ timeout: 15_000 });
+
+    await footer.getByRole("link", { name: "Privacy Policy" }).click();
+    await expect(page).toHaveURL(/\/en\/privacy-policy$/);
+    await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
+  });
+
+  test("legacy /privacy redirects to /privacy-policy (bookmarks + cached prefetches)", async ({ page }) => {
+    await mockGuestApi(page);
+
+    await page.goto("/en/privacy", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/en\/privacy-policy$/);
+    await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
+  });
+
   test("footer links to the Masar-X org + star badge (spec 054)", async ({ page }) => {
     await page.goto("/en", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
