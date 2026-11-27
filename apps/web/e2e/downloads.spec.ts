@@ -4,17 +4,16 @@ import { expect, test } from "@playwright/test";
  * Downloads center + Android waitlist — spec 056.
  *
  * The GitHub Releases version lookup is SERVER-side (lib/github-releases.ts,
- * revalidate 3600 — unmockable via page.route), so the hero is asserted
- * SOFT: either the release hero or the localized error card may render
- * depending on GitHub reachability from the dev server — but never the app
- * error boundary. The platform cards and the waitlist form are static and
- * fully browser-mockable: POST /rest/v1/waitlist → 201 → waitlist.success;
- * a second submit (dup, code 23505) → waitlist.duplicate.
+ * revalidate 3600), so the hero is asserted SOFT: either the release hero or
+ * the localized error card may render depending on GitHub reachability from
+ * the server — but never the app error boundary. The platform cards and the
+ * waitlist form are static. Shell test (T-016): unmocked — anonymous shell
+ * requests flow through to the real backend. Waitlist test: stays
+ * route-mocked — a real POST would write rows into the live waitlist table;
+ * the 201-then-409 sequence is a mutation contract.
  *
- * Mocked: anon auth pair, catch-all rest/v1 → [], platform_settings
- * (single object), rest/v1/waitlist (201 then 409).
- *
- * Local dev compile cost: 120s timeout (quiz-finish precedent).
+ * Local dev compile cost: 120s timeout (quiz-finish precedent; CI is a
+ * prebuilt `next start`).
  */
 
 test.setTimeout(120_000);
@@ -60,8 +59,6 @@ test.describe("downloads (anonymous)", () => {
   test("renders the shell: hero-or-error card, platform cards, waitlist form", async ({
     page,
   }) => {
-    await seedShell(page);
-
     await page.goto("/ar/downloads", { waitUntil: "domcontentloaded" });
     await page.waitForRequest("**/rest/v1/platform_settings*", { timeout: 45_000 });
 

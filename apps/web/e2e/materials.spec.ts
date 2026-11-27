@@ -4,23 +4,29 @@ import { expect, test } from "@playwright/test";
  * Materials e2e — spec 033, re-baselined 2026-11-05 (owner decision):
  * level/semester selection lives in the profile, so the term filter chips
  * are gone and the static manifest is filtered to the viewer's profile
- * level+semester. Anonymous variant: guests resolve to level 1 + platform
- * default semester (mocked to 1) → the 13 Y1-S1 stub subjects. The
- * signed-in Y2-S1 variant is covered by the useMaterialsData unit tests —
- * Playwright has no portable seed session yet (same deferral as
- * subjects-catalog.spec.ts).
+ * level+semester. Anonymous real-data variant (T-016): no route mocks — the
+ * guest pins the Y1-S1 slice via the documented guest semester choice
+ * (localStorage `masar_guest_semester` = 1), which overrides the live
+ * platform default (default_semester = 2; the manifest ships semester-1
+ * subjects only). The signed-in Y2-S1 variant is covered by the
+ * useMaterialsData unit tests — authed Playwright runs need the
+ * seeded-cookie contract, which the server rejects (spec 056).
  */
 
 test.describe("materials (profile-scoped, anonymous)", () => {
   test.beforeEach(async ({ page }) => {
-    // Deterministic guest semester: platform_settings resolves to nothing
-    // (PGRST116) → the hook falls back to the hardcoded default semester 1.
-    await page.route("**/rest/v1/platform_settings*", (route) =>
-      route.fulfill({
-        status: 406,
-        json: { code: "PGRST116", details: null, hint: null, message: "0 rows" },
-      }),
-    );
+    // Guest semester choice (documented resolution chain: profile → guest
+    // localStorage → platform default) — the manifest ships semester-1
+    // subjects, so the guest override pins Y1-S1 regardless of the live
+    // platform default. No route mocks: platform_settings flows through to
+    // the real backend.
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem("masar_guest_semester", "1");
+      } catch {
+        // storage unavailable — nothing to seed
+      }
+    });
   });
 
   test("guest sees only their fallback term's subjects, no filter chips", async ({

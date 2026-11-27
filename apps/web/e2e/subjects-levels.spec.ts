@@ -6,9 +6,14 @@ import { expect, test } from "@playwright/test";
  * renders no tab bar and the subjects query is scoped server-side to the
  * viewer's profile level (useSubjects default path).
  *
- * Anonymous, route-mocked variant. The signed-in variant (profile level N →
- * level.eq.N) is covered by the useSubjects unit tests — Playwright has no
- * portable seed session yet (same deferral reason as subjects-catalog.spec.ts).
+ * Unmocked real-data variant (T-016): the guest request is OBSERVED, not
+ * intercepted (page.on("request") — the real call goes through to the live
+ * Supabase project). The guest fallback (profile level null → 1) still
+ * scopes the query, the anonymous show_on_home filter is preserved, and the
+ * real seed data renders at least one subject card. The signed-in variant
+ * (profile level N → level.eq.N) is covered by the useSubjects unit tests —
+ * authed Playwright runs need the seeded-cookie contract, which the server
+ * rejects (spec 056).
  */
 
 test.describe("subjects profile scoping (no level tabs)", () => {
@@ -16,17 +21,11 @@ test.describe("subjects profile scoping (no level tabs)", () => {
     page,
   }) => {
     let subjectsUrl = "";
-    await page.route("**/auth/v1/user", (route) =>
-      route.fulfill({ json: { id: null, email: null, aud: null } }),
-    );
-    await page.route("**/auth/v1/token*", (route) =>
-      route.fulfill({ json: { error: "no_session" } }),
-    );
-    await page.route("**/rest/v1/subjects*", (route) => {
-      subjectsUrl = decodeURIComponent(route.request().url());
-      return route.fulfill({ json: [] });
+    page.on("request", (request) => {
+      if (request.url().includes("/rest/v1/subjects")) {
+        subjectsUrl = decodeURIComponent(request.url());
+      }
     });
-    await page.route("**/rest/v1/profiles*", (route) => route.fulfill({ json: null }));
 
     await page.goto("/ar/subjects", { waitUntil: "domcontentloaded" });
 
@@ -35,8 +34,14 @@ test.describe("subjects profile scoping (no level tabs)", () => {
     await expect(page.getByTestId("subjects-level-tab")).toHaveCount(0);
 
     // Guest fallback (profile level null → 1) scopes the query, and the
-    // anonymous show_on_home filter is preserved.
+    // anonymous show_on_home filter is preserved — asserted on the real
+    // request the page actually sent.
     await expect.poll(() => subjectsUrl).toContain("level.eq.1");
     await expect.poll(() => subjectsUrl).toContain("show_on_home=eq.true");
+
+    // Real seed data renders the guest's scoped slice of the catalog.
+    await expect(page.locator('main [data-testid="subject-card"]').first()).toBeVisible({
+      timeout: 20_000,
+    });
   });
 });

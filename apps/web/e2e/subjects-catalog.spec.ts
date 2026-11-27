@@ -5,14 +5,18 @@ import { seedAuthedSession } from "./helpers/auth";
 /**
  * Subjects catalog e2e — spec 015 Contract E, re-baselined by spec 022.
  *
- * Anonymous, route-mocked variant: the academic grid must render the mocked
- * show_on_home subjects and must NEVER render the non-academic empty-state
+ * Anonymous variant (T-016): real-data — the academic grid renders the live
+ * public seed subjects (guest = level 1 + platform default semester, anon
+ * show_on_home filter) and must NEVER render the non-academic empty-state
  * copy on the academic grid (the old is_academic ternary bug — post-merge
- * this assertion also covers spec 015 scenario c).
+ * this assertion also covers spec 015 scenario c). Specific seed rows are
+ * not pinned: the guest slice follows the admin-set platform default
+ * semester, so only the populated-grid contract is asserted.
  *
  * Signed-in variant: unblocked by the spec-056 seeded-cookie auth contract
  * (fabricated session + route mocks, zero real Supabase writes) — no seed
- * database needed (#281).
+ * database needed (#281). It stays route-mocked (T-016): the fabricated
+ * cookie is rejected server-side, so authed scoping needs the fixtures.
  */
 
 const ERROR_BOUNDARY = /Application error|Something went wrong|حدث خطأ|حدث شيء ما|عذراً/;
@@ -56,39 +60,18 @@ const MOCK_SUBJECTS = [
   },
 ];
 
-test.describe("subjects catalog (anonymous, route-mocked)", () => {
-  test("renders mocked subject cards on /ar/subjects without non-academic copy", async ({
+test.describe("subjects catalog (anonymous, real data)", () => {
+  test("renders live seed subject cards on /ar/subjects without non-academic copy", async ({
     page,
   }) => {
-    await page.route("**/auth/v1/user", (route) =>
-      route.fulfill({ json: { id: null, email: null, aud: null } }),
-    );
-    await page.route("**/auth/v1/token*", (route) =>
-      route.fulfill({ json: { error: "no_session" } }),
-    );
-    await page.route("**/rest/v1/subjects*", (route) => {
-      // Emulate the server-side show_on_home filter: anonymous queries
-      // carry show_on_home=eq.true; signed-in student queries do not.
-      const url = route.request().url();
-      const rows = url.includes("show_on_home=eq.true")
-        ? MOCK_SUBJECTS.filter((s) => s.show_on_home)
-        : MOCK_SUBJECTS;
-      return route.fulfill({ json: rows });
-    });
-    await page.route("**/rest/v1/profiles*", (route) => route.fulfill({ json: null }));
-
     await page.goto("/ar/subjects", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).not.toContainText(ERROR_BOUNDARY);
 
-    await expect(
-      page.getByRole("button", { name: /تشريح|Anatomy/ }).first(),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("button", { name: /فسيولوجي|Physiology/ })).toBeVisible();
-
-    // Guest scoping: the show_on_home filter hides non-home subjects.
-    await expect(
-      page.getByRole("button", { name: /علم الأورام|Oncology/ }),
-    ).toHaveCount(0);
+    // Real seed data: the guest slice (level 1 + platform default semester,
+    // anonymous show_on_home filter) renders at least one subject card.
+    await expect
+      .poll(async () => page.locator('main [data-testid="subject-card"]').count(), { timeout: 20_000 })
+      .toBeGreaterThan(0);
 
     // Regression: the academic grid must never show the non-academic
     // empty-state copy (or the i18n key itself leaked as text).

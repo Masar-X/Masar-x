@@ -14,8 +14,13 @@ export default defineConfig({
     include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
     testTimeout: 30_000,
     // Spec 040: coverage reporter pinned so coverage-summary.json always
-    // exists for the CI artifact (report-only — no thresholds).
-    coverage: { reporter: ['text', 'json-summary'] },
+    // exists for the CI artifact. T-016 ratchet: thresholds sit 2 points
+    // under the measured baseline (mobile: L80.35/B65.44/F82.22/S77.91 measured on
+    // 2026-11-27) so CI stays green today while blocking regressions.
+    coverage: {
+      reporter: ['text', 'json-summary'],
+      thresholds: { lines: 78.3, branches: 63.4, functions: 80.2, statements: 75.9 },
+    },
   },
   resolve: {
     alias: [{ find: /^@\//, replacement: `${src}/` }],

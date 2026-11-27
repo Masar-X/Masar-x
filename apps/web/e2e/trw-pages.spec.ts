@@ -6,20 +6,19 @@ import { seedAuthedSession } from "./helpers/auth";
  * TRW pages: catalog, category, course detail, my-access — spec 056.
  *
  * /trw/* is NOT middleware-guarded (only /non-academic* is), so the gate is
- * the in-page TRWAccessGate: anonymous → the "Access Required" fallback
- * card; authed + membership row → content. The membership probe runs even
- * for the {id:null} anon mock (truthy user object) — trw_memberships must
- * be mocked (`null` for the .maybeSingle() probe).
+ * the in-page TRWAccessGate. Anonymous variant (T-016): real-data — with no
+ * session the membership hook resolves null without any REST probe, so the
+ * gate card renders against the live project.
  *
- * Shape branching on shared globs (LIFO: catch-all first):
- * - trw_categories: catalog select=*&is_published=eq.true → array;
- *   category page select=id&slug=eq.<slug> → single object.
- * - trw_courses: category page category_id list → array; course detail
- *   slug single → nested object with modules:trw_modules(*,materials:trw_materials(*)).
+ * The authed member variants stay route-mocked: the spec-056 seeded cookie
+ * is rejected server-side, so authed renders need the fabricated-session +
+ * fixture contract (trw_categories/trw_courses shapes, membership row with
+ * granted_at, filled profile — the AcademicOnboardingGate trap). The live
+ * project currently exposes no trw_courses table to anon REST — the mocked
+ * shapes are the contract these tests pin.
  *
- * my-access formats membership.granted_at — the mock must carry it.
- *
- * Local dev compile cost: 120s timeout (quiz-finish precedent).
+ * Local dev compile cost: 120s timeout (quiz-finish precedent; CI is a
+ * prebuilt `next start`).
  */
 
 test.setTimeout(120_000);
@@ -77,30 +76,8 @@ const MEMBERSHIP = {
   plan: { id: "00000000-0000-4000-8000-00000000tp1a", name: "TRW Annual" },
 };
 
-/** Anonymous gate mocks: the {id:null} probe still fires trw_memberships. */
-async function seedAnonymousTrw(page: import("@playwright/test").Page) {
-  await page.route("**/rest/v1/**", (route) => route.fulfill({ json: [] }));
-  await page.route("**/rest/v1/platform_settings*", (route) =>
-    route.fulfill({ json: { key: "default_semester", value: "1" } }),
-  );
-  await page.route("**/rest/v1/trw_memberships*", (route) =>
-    route.fulfill({ json: null }),
-  );
-  await page.route("**/auth/v1/user", (route) =>
-    route.fulfill({ json: { id: null, email: null, aud: null } }),
-  );
-  await page.route("**/auth/v1/token*", (route) =>
-    route.fulfill({ json: { error: "no_session" } }),
-  );
-}
-
 test.describe("TRW catalog (anonymous)", () => {
   test("shows the in-page access gate instead of the catalog", async ({ page }) => {
-    await seedAnonymousTrw(page);
-    await page.route("**/rest/v1/trw_categories*", (route) =>
-      route.fulfill({ json: [] }),
-    );
-
     await page.goto("/ar/trw", { waitUntil: "domcontentloaded" });
     await page.waitForRequest("**/rest/v1/platform_settings*", { timeout: 45_000 });
 
