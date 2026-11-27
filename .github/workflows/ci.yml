@@ -108,8 +108,10 @@ jobs:
   # ---------------------------------------------------------------------
   # Cross-workspace validation
   # Lightweight job that confirms every workspace package is healthy:
-  # installs cleanly via the lockfile, reports as a workspace, and its
-  # typecheck script exits cleanly.
+  # every manifest carries the same aligned version (T-013, plus the
+  # CHANGELOG [Unreleased] gate on feat/fix PRs), installs cleanly via
+  # the lockfile, reports as a workspace, and its typecheck script
+  # exits cleanly.
   # ---------------------------------------------------------------------
   workspaces:
     name: workspaces
@@ -117,6 +119,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check package versions and CHANGELOG gate
+        # T-013: every workspace manifest (plus the Expo mirror in
+        # apps/mobile/app.json) must carry one aligned version, and
+        # feat/fix PRs touching apps/ or packages/ must keep a
+        # [Unreleased] entry in CHANGELOG.md (escape hatch: the
+        # skip-changelog label). Runs before any toolchain setup on
+        # purpose — it needs only the preinstalled Node and gh CLI.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHECK_CHANGELOG: ${{ github.event_name == 'pull_request' }}
+        run: node scripts/check-versions.mjs
 
       - name: Setup pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6

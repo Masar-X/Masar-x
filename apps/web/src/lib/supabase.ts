@@ -12,6 +12,7 @@
  * New code SHOULD import `createSupabaseClient` from
  * `@masarx-shared/supabase` directly.
  */
+import pkg from "../../package.json";
 import { createSupabaseClient } from "masarx-shared/supabase";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,5 +26,7 @@ export const supabase = createSupabaseClient({
   runtime: "web",
   url: supabaseUrl,
   anonKey: supabaseAnonKey,
-  appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.5.6",
+  // Fallback reads the workspace-aligned version (scripts/check-versions.mjs);
+  // an explicit NEXT_PUBLIC_APP_VERSION still wins when set.
+  appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? pkg.version,
 });

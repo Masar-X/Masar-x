@@ -10,7 +10,6 @@ Installers, portable builds, and update manifests for each tagged version are pu
 
 ### Added
 
-- Desktop: local-only Crashpad crash-dump collection and `electron-log` file logging (#98)
 - Web: `/materials` exam library — 17 real exams with 242 verified questions seeded to production from a static manifest (#179), plus 13 approved Drive materials published (#191)
 - Web: `/schedules` weekly cohort timetables (years 1–4) and `/subjects` level tabs (#180)
 - Subject anchoring: `subject_id` FK columns with name-normalized backfill and sync triggers across subject lectures, summaries, and quizzes (#189)
@@ -28,6 +27,32 @@ Installers, portable builds, and update manifests for each tagged version are pu
 ### Removed
 
 - Real-exam seed SQL migrations withdrawn from the repository history (copyright withdrawal — spec 043); production quiz data unchanged
+
+## [0.7.0] - 2026-09-26
+
+### Added
+
+- Mobile: news screen and announcements channel (spec 020 C2)
+- Mobile: summary detail with reviews (spec 020 C4)
+
+### Changed
+
+- Mobile: dark mode support across all screens (spec 020 C3)
+
+## [0.6.1] - 2026-11-17
+
+### Added
+
+- Desktop: local-only Crashpad crash-dump collection and `electron-log` file logging (#98)
+- Mobile: subject detail with lecture content, signup and forgot password, academic path with filtered subjects, local AI chat history, quiz timer and attempts review (2026-09-25, spec 019)
+
+### Changed
+
+- Desktop: electron-builder upgraded 25 → 26 and the release publish path validated with a `0.6.0-test.1` pre-release (#158, #225); tag builds now publish on the stable GitHub channel so `/releases/latest` links surface real builds (#229)
+
+### Fixed
+
+- Desktop: rebuilt the broken v0.6.0 installer with the public Supabase env vars present — production builds refuse to start without them (spec 044 build-time guard) (#229)
 
 ## [0.6.0] - 2026-09-23
 
