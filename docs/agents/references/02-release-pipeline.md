@@ -7,7 +7,7 @@
 
 # Release Pipeline — full reference
 
-> **When to read:** the AGENTS.md index points here when you bump a version,
+> **When to read:** the references index points here when you bump a version,
 > release a desktop build, or troubleshoot CI release workflows.
 
 ---

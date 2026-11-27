@@ -1,702 +1,118 @@
-# Complete Setup Instructions for Masar X
-*Last updated: November 7, 2026*
+# Setup guide
 
-## Recent edits (7 Nov 2026)
-- Refreshed for the monorepo layout (`apps/web/`): corrected the dependency list, replaced the retired `test_quiz/` scripts with the current `pnpm` test flows, and pointed type generation at `pnpm types:generate`.
-- Database migrations use timestamped filenames in `supabase/migrations/`; the legacy numbered chain (001–019) is archived under `supabase/migrations-archive/numbered-chain-001-019/`.
-
-## Recent edits (12 Mar 2026)
-- **Localization Sync**: Finalized all translation keys for Admin Dashboard and Appeals system.
-- **Hydration Strategy**: Implemented `isMounted` checks across all client-side auth-guarded forms.
-- **Improved Form Validation**: Enhanced `AddFileForm` and `AddVideoForm` with real-time feedback and better error handling.
-- **Performance Fixes**: Optimized course listing and navigation header rendering.
-
-## Recent edits (12 Feb 2026)
-- Updated project pages and components in `src/app/` (multiple pages)
-- Security & ops updates: DB migrations and Edge Functions (see "Security & Ops updates")
-- Backups added for some Supabase migration SQL files
-- Template enhancement: Made subjects configurable for easy college customization
-- Added `setup-subjects.js` script for automated subject population
- 
-
-This guide will walk you through setting up the "Masar X" comprehensive learning platform from scratch.
-
-## Project Overview
-
-"Masar X" is a modern, feature-rich educational platform designed for university students featuring:
-
-- **Study Summaries**: Crowdsourced platform for sharing and organizing academic summaries with PDF uploads
-- **Interactive Courses**: Complete course management with enrollment, reviews, and progress tracking
-- **AI Assistant**: Powered by Puter.js for intelligent study assistance and chat with conversation history
-- **Quizzes & Assessments**: Interactive quiz system with multiple question types and scoring
-- **Multi-Role System**: Student, Instructor, and Admin roles with comprehensive permission management
-- **Real-time Features**: Live notifications, chat system, and instant content updates
-- **Arabic-first Design**: Full RTL support with responsive mobile-friendly interface
+This is the human walkthrough for getting the Masar X monorepo running
+locally. It covers the pnpm workspace: `apps/web` (Next.js 16, production),
+`apps/desktop` (Electron), `apps/mobile` (Expo), and the shared
+`packages/shared` (types, i18n messages, Supabase client factory, AI client).
+For the short verify-checklist version see
+[`docs/agents/references/00-setup.md`](agents/references/00-setup.md).
 
 ## Prerequisites
 
-- Node.js 24 (pinned in `.nvmrc`) and pnpm
-- Supabase account and project
-- Puter.js Integration (for AI features)
-- EmailJS account (for email notifications)
-- Cloudinary account (for file uploads)
-- Git (for version control)
+| Requirement | Version | Notes |
+| --- | --- | --- |
+| Node.js | >= 24 | Pinned in `.nvmrc`; CI runs Node 24 |
+| pnpm | 9.15.4 | Pinned via `packageManager` in `package.json`; enable with `corepack enable` |
+| Supabase project | latest | Database, auth, storage, Edge Functions |
+| Cloudinary account | optional | Needed for file/image uploads |
 
-## Installation Steps
-
-### 1. Clone the Repository
+## Install
 
 ```bash
-git clone <repository-url>
-cd masarx_next
-```
-
-### 2. Install Dependencies
-
-```bash
-# Using npm
-npm install
-
-# Or using pnpm
+git clone https://github.com/Masar-X/Masar-x.git
+cd Masar-x
+corepack enable
 pnpm install
 ```
 
-This will install all required packages:
-- Next.js 16.4.3
-- React 19.2.4
-- TypeScript 5.5.3
-- Tailwind CSS 4.x
-- Supabase JS Client 2.118.0
-- Lucide React 0.577.0
-- KaTeX 0.16.27 (for math rendering)
-- And many more...
+`pnpm install` links every workspace to `packages/shared` via the workspace
+protocol — no per-app install is needed. Native-module postinstall builds run
+only for the allow-list in `pnpm-workspace.yaml` (`onlyBuiltDependencies`);
+read the comment there before adding a dependency with a build script.
 
-### 3. Environment Setup
+## Environment variables
 
-Create a `.env.local` file in the root directory with the following variables:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-NEXT_PUBLIC_EMAILJS_SERVICE_ID=your_emailjs_service_id
-NEXT_PUBLIC_EMAILJS_TEMPLATE_ID=your_emailjs_template_id
-NEXT_PUBLIC_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
-CLOUDINARY_API_KEY=your_cloudinary_api_key
-CLOUDINARY_API_SECRET=your_cloudinary_secret
-CLOUDINARY_URL=your_cloudinary_url
-UPSTASH_REDIS_REST_URL=your_upstash_rest_url
-UPSTASH_REDIS_REST_TOKEN=your_upstash_rest_token
-```
-
-### 4. Subject Customization (For Template Users)
-
-**Masar X is designed as a template** that can be easily customized for different colleges. To customize the subjects for your college:
-
-#### Step 1: Edit Subject Configuration
-Open `apps/web/src/config/subjects.config.ts` and customize:
-
-```typescript
-// Change college name
-export const COLLEGE_CONFIG = {
-    name: "University [your university name]", // Change to your college name
-    logo: "/logo.png"
-};
-
-// Customize Semester 1 subjects
-export const SEMESTER_1_SUBJECTS: Subject[] = [
-    { id: "1", name: "[Subject 1 name]", semester: 1 },
-    { id: "2", name: "[Subject 2 name]", semester: 1 },
-    // Add your semester 1 subjects...
-];
-
-// Customize Semester 2 subjects  
-export const SEMESTER_2_SUBJECTS: Subject[] = [
-    { id: "12", name: "[Subject 1 name]", semester: 2 },
-    { id: "13", name: "[Subject 2 name]", semester: 2 },
-    // Add your semester 2 subjects...
-];
-```
-
-#### Step 2: Run Subject Setup Script
-After customizing the subjects, run:
+Copy the template and fill in real values — never commit `.env.local`:
 
 ```bash
-pnpm --filter web setup-subjects
+cp .env.example .env.local
 ```
 
-This script will:
-- Clear existing subjects from the database
-- Insert your custom subjects with proper semester assignment
-- Set default active semester to Semester 1
-- Provide confirmation of successful setup
+| Variable | Required | Scope | Purpose |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | client | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | client | Supabase publishable key |
+| `DATABASE_URL` | Yes | server only | Direct Postgres connection (Drizzle / admin scripts) |
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Yes | client | Upload cloud name |
+| `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | Yes | client | Unsigned upload preset |
+| `NEXT_PUBLIC_SITE_URL` | Yes | client | Canonical site URL (OG tags, sitemaps) |
+| `NEXT_PUBLIC_GA_ID` | No | client | Google Analytics ID |
+| `NEXT_PUBLIC_FACULTY` | No | client | Faculty white-label preset (`fcai-asnu`, `bis`) |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | No | server only | Durable rate limiting (flows fail open when unset) |
+| `SENTRY_DSN` | No | server only | Error monitoring (blank = disabled) |
+| `VERCEL_MCP_BYPASS_SECRET` | No | server only | Auth secret for `/api/mcp` |
+| `ANALYZE` | No | build | Enable the Next.js bundle analyzer |
 
-#### Step 3: Verify Setup
-1. Start the development server: `npm run dev`
-2. Visit `/subjects` to see your custom subjects
-3. Check that semester switching works correctly
-4. Access admin panel to manage subjects further if needed
+`NEXT_PUBLIC_*` values are inlined into the client bundle at build time and
+are visible to every browser — keep real secrets out of them.
+[`.env.example`](../.env.example) is the authoritative, commented list.
 
-**Note:** You can re-run `pnpm --filter web setup-subjects` anytime to update subjects. The script is safe to run multiple times.
+## Database
 
-### 5. Database Setup
+The Supabase project is the single backend. Point the Supabase env vars at
+your project, then apply the timestamped migrations in `supabase/migrations/`
+in lexical order. The full replay procedure (roles, extensions prelude,
+migrations, seed, SQL harnesses) is documented in
+[`supabase/tests/README.md`](../supabase/tests/README.md), and CI replays the
+same chain in its `db-verify` job.
 
-The platform uses a comprehensive PostgreSQL database with 20+ tables managed through Supabase.
+Optional seed data:
 
-#### For Local Development (Docker required):
-```bash
-npx supabase start
-npx supabase db reset
-```
+- `pnpm seed:launch --dry-run` — probe the schema and print the planned MVP
+  launch seed (three Term-1 subjects, lectures, a demo quiz) without writing;
+  drop `--dry-run` to write. Needs `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+- `pnpm --filter web setup-subjects` — rewrite subjects from
+  `apps/web/src/config/subjects.config.ts`.
 
-#### For Production/Remote Database:
-```bash
-npx supabase db remote commit
-npx supabase db pull
-```
-
-### Security & Ops updates (Feb 2026)
-- Important security and operational updates were applied — make sure they are in place in your environment:
-  1. Run all new migrations (locally or remotely) to confirm the presence of: a unique constraint on `rate_limits(identifier, endpoint)`, the `system_logs` table, and the `token_hash` column in `password_reset_tokens`.
-  2. Confirm that the `summaries-pdfs` upload policy no longer allows anonymous uploads (authenticated users only).
-  3. Redeploy all Supabase Edge Functions after applying the migrations:
-     ```bash
-     npx supabase functions deploy ai-chat
-     npx supabase functions deploy process-pdf
-     npx supabase functions deploy upload-avatar
-     npx supabase functions deploy delete-avatar
-     npx supabase functions deploy upload-file
-     npx supabase functions deploy delete-file
-     npx supabase functions deploy auth-hook-email
-     npx supabase functions deploy cloudinary-webhook
-     npx supabase functions deploy request-password-reset
-     npx supabase functions deploy reset-password
-     npx supabase functions deploy summarize-chat
-     ```
-  4. Test the password-reset flow and confirm `token_hash` is used correctly before removing any plaintext token storage.
-#### Database Schema Overview:
-- **Core Tables**: `profiles`, `admins`, `summaries`, `courses`, `enrollments`, `quizzes`
-- **Content Tables**: `course_summaries`, `course_videos`, `course_files`
-- **Communication**: `chats`, `chat_messages`, `notifications`, `news`
-- **AI Features**: `ai_summaries`, `assistant_messages`
-- **Security**: `audit_logs`, `password_reset_tokens`
-- **Analytics**: `analytics`, `content_analytics`
-
-### 5. Sample Data
-
-The database includes sample data for:
-- Academic subjects and departments
-- Sample courses with structured content
-- Quiz questions and assessments
-- User profiles and admin accounts
-
-### 6. Development Server
-
-Start the Next.js development server:
+## Development
 
 ```bash
-# Using npm
-npm run dev
-
-# Or using pnpm
-pnpm dev
+pnpm dev            # web app at http://localhost:3000
+pnpm dev:desktop    # Electron shell over a local Next.js server
+pnpm dev:mobile     # Expo dev server
 ```
 
-The application will be available at `http://localhost:3000`
+Mobile simulators: `pnpm --filter mobile ios` / `pnpm --filter mobile android`.
 
-### 7. Admin User Setup
-
-Masar X is designed as a customizable template, so it does not come with pre-defined admin users. You must set up your own administrative accounts.
-
-**Note:** Admin roles are managed through both the `admins` table and auth metadata. Use the admin dashboard to manage user roles and permissions.
-
-To create admin users:
-1. Go to Supabase Dashboard → Authentication → Users
-2. Click "Add user" → "Create new user"
-3. Enter email and password
-4. Check "Auto Confirm User"
-5. Add the user to the `admins` table via SQL or by manually inserting a row with the user's ID.
-6. Alternatively, set the `role` to `admin` in the user's `raw_user_meta_data`.
-
-## Project Structure
-
-```
-masarx_next/
-├── src/
-│   ├── app/                      # Next.js App Router pages
-│   │   ├── [locale]/             # i18n dynamic route (main app)
-│   │   │   ├── admin-dashboard/  # Unified admin management
-│   │   │   ├── instructor-dashboard/ # Course & student management
-│   │   │   ├── trw/              # The Road Within subsystem
-│   │   │   ├── courses/          # Course catalog & enrollment
-│   │   │   ├── subjects/         # Subject details & lectures
-│   │   │   ├── quizzes/          # Quiz listings & management
-│   │   │   ├── ai-assistant/     # AI tutor interface
-│   │   │   ├── profile/          # User profile & settings
-│   │   │   └── onboarding/       # Academic onboarding gate
-│   │   ├── layout.tsx           # Global app layout
-│   │   ├── sitemap.ts           # Native SEO generation
-│   │   └── page.tsx             # Route dispatcher
-│   ├── components/              # Modular UI components
-│   │   ├── appeals/             # Content moderation appeals
-│   │   ├── course/              # Course content & sections
-│   │   ├── enrollments/         # Payment & enrollment UI
-│   │   ├── header/ & footer/    # Layout navigation modules
-│   │   ├── lectures/            # Lecture management components
-│   │   ├── subject/             # Subject & exam dashboards
-│   │   ├── summaries/           # Summary listing & filters
-│   │   └── ui/                 # shadcn/custom primitive components
-│   ├── contexts/               # React Context Providers
-│   │   ├── AuthContext.tsx     # Session & role-based auth
-│   │   └── ThemeContext.tsx    # Light/Dark mode state
-│   ├── hooks/                  # Custom React Hooks
-│   │   ├── useUserAcademic.ts  # Academic data & caching
-│   │   ├── useAiChat.ts        # AI assistant logic
-│   │   └── useTRWHooks.ts      # TRW subsystem operations
-│   ├── i18n/                   # next-intl configuration
-│   ├── messages/               # JSON translations (ar.json, en.json)
-│   ├── lib/                    # Core libraries & integrations
-│   │   ├── supabase.ts         # Supabase client & SSR
-│   │   ├── puter.ts            # Puter.js AI integration
-│   │   └── cloudinary.ts       # Media upload handling
-│   ├── types/                  # TypeScript definitions
-│   ├── config/                 # App-wide configurations
-│   └── navigation.ts           # Shared i18n navigation
-├── supabase/                   # Database & Edge Functions
-│   ├── migrations/            # Timestamped SQL migrations & RLS policies
-│   ├── migrations-archive/    # Legacy numbered migration chain (001–019)
-│   └── functions/             # Deno Edge Functions (Brevo, AI, etc.)
-├── middleware.ts               # Auth & i18n middleware
-├── vercel.json                 # Security headers & CSP
-└── README.md                   # Project overview
-```
-
-## Features Walkthrough
-
-### For Students
-
-1. **Browse Learning Content**
-   - Explore summaries, courses, and quizzes from the home page
-   - Use advanced search and filtering by subject, department, and year
-   - Access AI-powered study assistant for help with difficult topics
-   - View detailed content with PDF downloads and rich formatting
-
-2. **TRW (The Road Within) Subsystem**
-   - Access non-academic premium content and specialized courses
-   - Redeem access codes to unlock specific plans (Free/Full/Money)
-   - Manage multiple subscriptions and track specialized progress
-
-3. **Academic Onboarding**
-   - Mandatory specialization setup during first-time login
-   - Personalized content filtering based on university and department
-   - Ensures data consistency and relevant study material discovery
-
-4. **Enroll in Courses**
-   - Browse the course catalog with instructor information
-   - Submit payment proofs for course enrollment
-   - Track learning progress and completion status
-   - Access structured course materials (summaries, videos, files)
-
-5. **Take Interactive Quizzes**
-   - Participate in assessments with multiple question types
-   - Experience timed quizzes with auto-save functionality
-   - Receive instant scoring and detailed feedback
-   - Track quiz attempts and performance history
-
-6. **AI-Powered Learning**
-   - Chat with the AI assistant for explanations and help
-   - Support for RAG (Retrieval-Augmented Generation) and group chats
-   - Get personalized study recommendations and conversation history
-   - Integrated Puter mode for extended usage limits
-
-7. **Multi-language Support (Localization)**
-   - Seamless switching between Arabic and English
-   - Full RTL support for Arabic and LTR for English
-   - Consistent translation across all platform features
-
-8. **Contribute Content**
-   - Submit study summaries with rich text and PDF uploads
-   - Rate and review courses and instructors
-   - Participate in the learning community
-   - Share knowledge with fellow students
-
-### For Instructors
-
-1. **Course Management**
-   - Create and publish comprehensive courses
-   - Organize content with summaries, videos, and files
-   - Set up quizzes and assessments for students
-   - Manage course pricing and enrollment settings
-
-2. **Student Oversight**
-   - Track student enrollment and progress
-   - View detailed analytics and engagement metrics
-   - Review and respond to course feedback
-   - Manage course content and materials
-
-3. **Assessment Creation**
-   - Build interactive quizzes with various question types
-   - Set time limits and scoring configurations
-   - Review student performance and quiz attempts
-   - Provide feedback and grading
-
-### For Admins
-
-1. **Platform Management**
-   - Access comprehensive admin dashboard with real-time analytics
-   - Manage user roles and permissions (Student/Instructor/Admin)
-   - Oversee all platform content, subjects, and lectures
-   - Configure global platform settings (e.g., active semester)
-
-2. **Content Moderation & Appeals**
-   - Review user-generated summaries and content
-   - Approve or reject submissions with detailed feedback
-   - Manage formal appeals and dispute resolution workflow
-   - Audit activity logs for platform safety
-
-3. **User Management**
-   - View all registered users and their roles
-   - Manage admin privileges and access control
-   - Handle user authentication and password resets
-   - Monitor user activity and engagement
-
-4. **System Configuration**
-   - Configure platform settings and integrations
-   - Manage subjects, departments, and academic structure
-   - Set up email notifications and communication
-   - Oversee file storage and media management
-
-5. **Analytics & Reporting**
-   - Access detailed platform analytics
-   - Monitor course performance and user engagement
-   - Track quiz completion rates and scores
-   - Generate reports for platform insights
-
-## Building for Production
-
-### Build the Project
+## Verification
 
 ```bash
-# Using npm
-npm run build
-
-# Or using pnpm
-pnpm build
+pnpm typecheck      # TypeScript across all workspaces
+pnpm lint           # ESLint (web); desktop/mobile have their own lint scripts
+pnpm test           # vitest suites across all workspaces
 ```
 
-This creates an optimized production build in the `.next/` directory with:
-- Static asset optimization
-- Code splitting and bundling
-- Image optimization
-- SEO enhancements
+Playwright e2e for the web app: `pnpm --filter web test:e2e`. The run contract
+(env vars, seeded-cookie auth, the fresh-worktree `.env.local` note) is
+[`docs/agents/references/12-e2e-testing.md`](agents/references/12-e2e-testing.md).
 
-### Start Production Server
+## Production build & deploy
 
-```bash
-# Using npm
-npm run start
-
-# Or using pnpm
-pnpm start
-```
-
-The application will be available at `http://localhost:3000`
-
-### Deploy
-
-The project is optimized for deployment on Vercel with:
-- Automatic builds and deployments
-- Environment variable management
-- Custom domain support
-- Performance monitoring
-- Global CDN distribution
-
-#### Alternative Deployment Options:
-- **Vercel** (recommended) - One-click deployment
-- **Netlify** - Static site hosting with Next.js support
-- **Railway** - Full-stack deployment platform
-- **AWS Amplify** - AWS-powered hosting
-- **Self-hosted** - Docker deployment on any server
-
-## Configuration
-
-### Environment Variables
-
-Ensure all required environment variables are set in `.env.local`:
-
-```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# AI Integration
-# Puter.js is used for AI features; no additional API key required in env if using client SDK
-
-# Email Services
-NEXT_PUBLIC_EMAILJS_SERVICE_ID=your_emailjs_service_id
-NEXT_PUBLIC_EMAILJS_TEMPLATE_ID=your_emailjs_template_id
-NEXT_PUBLIC_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
-
-# File Storage
-CLOUDINARY_API_KEY=your_cloudinary_api_key
-CLOUDINARY_API_SECRET=your_cloudinary_secret
-CLOUDINARY_URL=your_cloudinary_url
-
-# Rate Limiting & Product Metrics (Upstash Redis — flows fail open if unset)
-UPSTASH_REDIS_REST_URL=your_upstash_rest_url
-UPSTASH_REDIS_REST_TOKEN=your_upstash_rest_token
-```
-
-### Customization
-
-#### Theme Customization
-Edit `tailwind.config.js` to customize colors, fonts, and design tokens.
-
-#### Arabic/RTL Support
-The platform includes full RTL support with:
-- Arabic font stacks optimized for readability
-- RTL-aware component layouts
-- Localized error messages and UI text
-
-#### Add New Features
-1. Update database schema with a new timestamped migration in `supabase/migrations/`
-2. Generate/update TypeScript types: `pnpm types:generate` (writes `packages/shared/src/types/database.generated.ts`)
-3. Create new components in appropriate directories
-4. Update routing in `src/app/` directory
-
-### Performance Optimization
-
-The project includes comprehensive performance optimizations:
-- **Next.js 16**: App Router with automatic optimization
-- **Image Optimization**: Automatic WebP conversion and lazy loading
-- **Code Splitting**: Automatic route-based and component splitting
-- **Caching**: Intelligent caching strategies for static and dynamic content
-- **PWA Support**: Service worker for offline functionality
-- **SEO**: Meta tags, structured data, and performance monitoring
+- **Web** — `pnpm build` (Next.js standalone output). Deployed on Vercel; the
+  deployment config lives at `apps/web/vercel.json`.
+- **Desktop** — `pnpm build:desktop`; pushing a tag runs `release.yml` and
+  publishes installers to GitHub Releases.
+- **Mobile** — Expo/EAS builds are owner-operated; CI does not deploy them.
+- **Edge Functions** — deployed by hand from `supabase/functions/`; never by CI.
 
 ## Troubleshooting
 
-### Development Issues
-
-**Next.js Build Errors:**
-```bash
-# Type checking
-npm run lint
-
-# Build with verbose output
-npm run build --verbose
-```
-
-**TypeScript Errors:**
-```bash
-# Type checking only
-npx tsc --noEmit
-```
-
-### Runtime Errors
-
-**Supabase Connection Issues:**
-- Verify environment variables in `.env.local`
-- Check Supabase project status and API keys
-- Test connection using Supabase dashboard
-- Review browser network tab for API calls
-
-**Authentication Problems:**
-- Ensure admin users exist in both `auth.users` and `admins` table
-- Check email confirmation status in Supabase
-- Verify RLS policies are correctly configured
-- Test authentication flow in browser dev tools
-
-**AI Assistant Not Working:**
-- Verify Puter.js SDK is properly initialized
-- Check if user is signed in to Puter if required
-- Review browser console for SDK errors
-- Test Puter integration separately
-
-### Database Issues
-
-**Migration Problems:**
-```bash
-# Reset local database
-npx supabase db reset
-
-# Pull remote changes
-npx supabase db pull
-```
-
-**RLS Policy Issues:**
-- Check Supabase dashboard for policy configurations
-- Ensure proper role-based access control
-- Test policies with different user roles
-
-### File Upload Issues
-
-**Cloudinary Upload Failures:**
-- Verify Cloudinary credentials and configuration
-- Check file size limits (default: 10MB)
-- Ensure proper file types are allowed
-- Review Cloudinary dashboard for errors
-
-**Storage Bucket Access:**
-- Check Supabase storage bucket policies
-- Verify file permissions and access control
-- Test bucket access from Supabase dashboard
-
-### Performance Issues
-
-**Slow Loading:**
-- Check browser network tab for large assets
-- Verify image optimization is working
-- Review Next.js build output for bundle sizes
-- Test with browser developer tools performance tab
-
-**Real-time Features Not Working:**
-- Verify Supabase real-time is enabled
-- Check WebSocket connections in network tab
-- Test with different browsers/devices
-
-## Testing & Quality Assurance
-
-### Developer Testing Tools
-
-The web app ships with Vitest unit tests and a Playwright end-to-end suite; the root package exposes the common flows as workspace scripts.
-
-#### Available Commands:
-- **`pnpm typecheck`** - TypeScript check across all workspaces
-- **`pnpm lint`** - ESLint for the web app
-- **`pnpm test`** - Vitest unit tests
-- **`pnpm --filter web test:e2e`** - Playwright end-to-end suite
-
-#### Quick Start:
-```bash
-# From the repository root
-pnpm typecheck
-pnpm lint
-pnpm test
-
-# End-to-end tests live in the web app
-pnpm --filter web test:e2e
-```
-
-### Manual Testing Checklist
-
-#### Core Features:
-- [ ] User registration and authentication
-- [ ] Summary submission and moderation
-- [ ] Course enrollment and payment verification
-- [ ] Quiz taking and scoring
-- [ ] AI assistant chat functionality
-- [ ] File uploads (PDFs, images, videos)
-- [ ] Real-time notifications
-- [ ] Admin dashboard functionality
-
-#### User Roles:
-- [ ] Student permissions and access
-- [ ] Instructor course management
-- [ ] Admin platform oversight
-
-#### Mobile Responsiveness:
-- [ ] Test on various screen sizes
-- [ ] RTL layout verification
-- [ ] Touch interactions
-- [ ] PWA functionality
-
-## Production Deployment Checklist
-
-### Pre-Deployment:
-- [ ] Set up production Supabase project
-- [ ] Configure all environment variables
-- [ ] Run database migrations
-- [ ] Create production admin users
-- [ ] Test all features in staging environment
-- [ ] Set up error monitoring (Vercel Analytics, Sentry)
-- [ ] Configure custom domain
-- [ ] Set up SSL certificates
-
-### Security Checklist:
-- [ ] Review RLS policies for production
-- [ ] Verify API key security
-- [ ] Test authentication flows
-- [ ] Check file upload restrictions
-- [ ] Audit admin access controls
-- [ ] Set up backup procedures
-
-### Performance Optimization:
-- [ ] Enable Vercel optimizations
-- [ ] Configure CDN settings
-- [ ] Test loading speeds
-- [ ] Verify SEO implementation
-- [ ] Check accessibility compliance
-
-### Monitoring & Maintenance:
-- [ ] Set up analytics tracking
-- [ ] Configure error logging
-- [ ] Set up automated testing
-- [ ] Plan regular maintenance schedule
-- [ ] Document admin procedures
-
-## Future Enhancements Roadmap
-
-### Currently Active Features:
-- ✅ Advanced Course Management System
-- ✅ AI-Powered Chat Assistant
-- ✅ Comprehensive Quiz System
-- ✅ Multi-Role User Architecture
-- ✅ Real-time Communication
-- ✅ Content Moderation & Appeals
-- ✅ PWA Support & Mobile Optimization
-
-### Planned Enhancements:
-- **Certificate Generation**: Automated course completion certificates
-- **Video Content Integration**: Native video hosting and streaming
-- **Peer-to-Peer Learning**: Study groups and collaborative features
-- **Advanced AI Tutoring**: Personalized learning paths and recommendations
-- **Offline Synchronization**: Content availability without internet
-- **External LMS Integration**: Compatibility with other learning platforms
-- **Social Learning Features**: Community forums and discussion boards
-- **Advanced Analytics**: Machine learning-driven insights
-- **Mobile Applications**: Native iOS and Android apps
-- **Multi-language Support**: Additional language localization
-
-## Support & Resources
-
-### Documentation:
-1. **README.md** - Comprehensive project overview and features
-2. **SETUP.md** - This complete setup guide
-3. **docs/FEATURES.md** - Feature inventory and implementation status
-4. **docs/PROJECT_CONTEXT.en.md** - Additional project context and requirements
-
-### Getting Help:
-- Check browser console for JavaScript errors
-- Review Supabase dashboard for database issues
-- Test API endpoints using Supabase documentation
-- Check Vercel deployment logs for production issues
-- Review GitHub issues for known problems
-
-### Community Resources:
-- **Supabase Documentation**: Database and authentication guides
-- **Next.js Documentation**: Framework-specific help
-- **Tailwind CSS**: Styling and component guidance
-- **Puter.js Documentation**: AI integration documentation
-
-### Development Tools:
-- **VS Code**: Recommended IDE with TypeScript support
-- **Supabase CLI**: Database management and migrations
-- **Vercel CLI**: Deployment and environment management
-- **Browser DevTools**: Debugging and performance analysis
+Known pitfalls (Vercel installs, the pnpm allow-list syntax, Windows env vars,
+Electron builds, theme hydration, …) live in
+[`docs/agents/references/01-gotchas.md`](agents/references/01-gotchas.md) —
+search by subsystem before debugging from scratch.
 
 ## License
 
-Source code is licensed under the GNU AGPL-3.0 — see [LICENSE](../LICENSE). Educational content and the Masar X brand are not covered by that grant; see [NOTICE.md](../NOTICE.md).
-
-## Acknowledgments
-
-Built with modern web technologies for the Arabic-speaking academic community:
-- **Next.js 16** - React framework for production
-- **Supabase** - Backend-as-a-Service platform
-- **Puter.js** - AI-powered assistance
-- **Tailwind CSS** - Utility-first styling
-- **TypeScript** - Type-safe development
-
-The platform serves as a comprehensive learning management system designed specifically for university students in the Arab world, featuring full RTL support and localized user experience.
+AGPL-3.0-only for code; content and brand assets carry their own carve-outs —
+see [`NOTICE.md`](../NOTICE.md).

@@ -62,7 +62,7 @@ is reserved for the OS layer. Grounding:
 | `supabase/functions/**` | `deno check` + `deno test` locally (exact deno 2.9.7) + a handler test for any new/changed handler |
 | `supabase/migrations/**` | portable-PG run of `rpc-verify.sql` + `rls-verify.sql` (steps in `supabase/tests/README.md`) |
 | `apps/desktop/**` | desktop vitest; `MASARX_RUN_SMOKE=1` smoke for main/preload/server changes |
-| docs / `AGENTS.md` | markdownlint + internal links resolve |
+| docs / tracked Markdown | markdownlint + internal links resolve |
 
 CI enforces the cross-cutting layer on every PR regardless: `test`
 (all workspace vitest suites with coverage), `e2e`, `deno-check`, `ESLint`,
@@ -153,10 +153,10 @@ always derived from `specs/` on disk.
 
 - The [§4 matrix](#4-coverage-matrix-2026-11-22-main-5f33dad) is refreshed at
   merge campaigns: update counts, strike resolved gaps, add new routes — same
-  discipline as the spec-ledger rows in `AGENTS.md`.
+  discipline as the spec-ledger rows in `docs/spec-ledger.md`.
 - [12-e2e-testing.md](./12-e2e-testing.md) stays the Playwright run contract;
   this file is the policy + audit layer on top.
 - Tool boundaries are frozen: browser-use inside pages, computer-use at the
   OS layer, T1 suites in CI. Changing any of those is an owner decision.
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

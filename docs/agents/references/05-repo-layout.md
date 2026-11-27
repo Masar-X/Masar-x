@@ -22,4 +22,4 @@ masarx_next/
 
 Full root conventions: `STRUCTURE.md`.
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

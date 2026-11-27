@@ -139,4 +139,4 @@ matching this repo's dominant convention) instead of inheriting the machine glob
 Not a command-time override (I15's letter), but an undisclosed choice of identity source —
 any deliberate identity selection must be stated in the report.
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

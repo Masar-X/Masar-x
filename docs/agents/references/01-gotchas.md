@@ -7,7 +7,7 @@
 
 # Project Gotchas — full reference
 
-> **When to read this file:** the index in `AGENTS.md` will point you here when
+> **When to read this file:** the references index ([README.md](./README.md)) will point you here when
 > you touch a relevant subsystem (OAuth, Supabase SSR, Electron build, Vercel
 > env, pnpm/Node tooling, Windows env vars, GitHub Releases, theme hydration,
 > git stash, AI tooling). Otherwise skip.
@@ -109,11 +109,11 @@
 - **Why:** Vercel's bundled pnpm occasionally materializes `.pnpm/<long-format-path>/...` as empty even when install reports success.
 - **Fix:** `vercel cache purge --yes && vercel redeploy <url> --no-wait`. The "Vercel - Deployment has failed" check can stay stuck on the original failed deployment ID even after a successful `redeploy` — confirm with `vercel list --limit 1` (`● Ready` on the latest).
 
-## 13. Cloudflare MCPs documented in AGENTS.md are NOT loaded in MiniMax Code sessions
+## 13. Cloudflare MCPs are NOT loaded in MiniMax Code sessions
 
 - **Trigger:** You try to use `cloudflare-api` / `cloudflare-docs` / `cloudflare-browser` MCPs.
 - **Why:** Those are configured in the OpenCode profile (`C:\Users\FOTE\.config\opencode\opencode.jsonc`) — a separate config from MiniMax Code's MCP config at `C:\Users\FOTE\.minimax\mcp\mcp.json` (verified 2026-11-07: ~14 servers enabled — the original `opencode`, `matrix`, `playwright`, `cu`, `trash` plus `supabase` ×2, `github`, `vercel`, `sentry`, `upstash`, `cloudinary`, `obsidian`, `chrome-devtools`; the `cloudflare-api` / `cloudflare-docs` / `cloudflare-browser` trio is still `enabled: false`).
-- **Fix:** Run `mavis mcp list` at session start. If it returns `{"servers": []}`, no MCPs are available regardless of what AGENTS.md claims. Fall back to direct HTTP calls or the corresponding CLI (`wrangler` for Cloudflare, `vercel` for Vercel, `gh` for GitHub, `supabase` for Supabase). Confirm tool availability with `Get-Command <tool>` before relying on it.
+- **Fix:** Run `mavis mcp list` at session start. If it returns `{"servers": []}`, no MCPs are available regardless of what the repo docs claim. Fall back to direct HTTP calls or the corresponding CLI (`wrangler` for Cloudflare, `vercel` for Vercel, `gh` for GitHub, `supabase` for Supabase). Confirm tool availability with `Get-Command <tool>` before relying on it.
 
 ## 14. Windows env var propagation: `setx` and `[Environment]::SetEnvironmentVariable(..., "User")` do NOT update running processes
 
@@ -247,4 +247,4 @@
 The following patterns were once issues but are now either fixed or no longer relevant. Listed here so you don't try to "re-fix" them:
 
 - ~~`gemini-chat` Edge Function reference in `src/lib/ai-assistant.ts`~~ — replaced by Puter.js client-side; dead-link grep can be ignored if encountered.
-- ~~`releases.yml` workflow~~ — renamed to `releases.yml.disabled` in commit `ab17ec0` (2026-08-25). Do NOT rename back unless rolling back the public-runner migration. See `AGENTS.md → Public Runner pipeline` for the active alternative.
+- ~~`releases.yml` workflow~~ — renamed to `releases.yml.disabled` in commit `ab17ec0` (2026-08-25). Do NOT rename back unless rolling back the public-runner migration. See [02-release-pipeline.md](./02-release-pipeline.md) for the active alternative.

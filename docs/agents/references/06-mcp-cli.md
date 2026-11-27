@@ -9,4 +9,4 @@
 
 At session start, run `mavis mcp list` to confirm what's actually loaded — `cloudflare-api` etc. are NOT in MiniMax Code by default.
 
-**Back to:** [AGENTS.md](../../../AGENTS.md)
+**Back to:** [references index](./README.md)

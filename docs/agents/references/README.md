@@ -1,6 +1,6 @@
 # Agent references — index
 
-Start here when AGENTS.md points you at a task. Read only what the task needs.
+Start here to find the right reference for a task. Read only what the task needs.
 
 | When you are… | Read… |
 |---|---|
@@ -21,5 +21,3 @@ Start here when AGENTS.md points you at a task. Read only what the task needs.
 | Committing, opening a PR, or checking pre-merge gates | [11-git-standards.md](./11-git-standards.md) + [08-precommit.md](./08-precommit.md) |
 | Need the full rule table (all 16 invariants) | [03-invariants.md](./03-invariants.md) |
 | Licensing questions (AGPL-3.0 code / content + brand carve-outs) | [../../../NOTICE.md](../../../NOTICE.md) |
-
-**Back to:** [AGENTS.md](../../../AGENTS.md)
