@@ -46,8 +46,10 @@ Determine whether `apps/desktop/src/main/__tests__/main.test.ts:774` is flaky/or
   evidence: 5 consecutive runs of `pnpm --filter desktop test` all exited 0 (`6 passed | 1 skipped (7)` files, `68 passed | 4 skipped (72)` tests, `main.test.ts` 22/22 on runs 1–5; durations 6.26s, 6.16s, 6.11s, 6.09s, 6.11s); `pnpm --filter desktop test:coverage` also exited 0 (`68 passed | 4 skipped`).
 - [x] `pnpm --filter desktop typecheck && pnpm --filter desktop lint` exits 0.
   evidence: `pnpm --filter desktop typecheck` (`tsc --noEmit`) exited 0 and `pnpm --filter desktop lint` (`eslint .`) exited 0.
-- [ ] `pnpm -r --if-present test` exits 0 across `web`, `desktop`, `mobile`, and `masarx-shared`.
-- [ ] CI `test` job on the PR reports `success` on GitHub Actions.
+- [x] `pnpm -r --if-present test` exits 0 across `web`, `desktop`, `mobile`, and `masarx-shared`.
+  evidence: `pnpm -r --if-present test` exited 0 (2026-11-27, worktree `C:/programming/WEB_Development/projects/masarx-wt/fix-footer-spec-stale-merge` @ `424658e`, after `pnpm install --frozen-lockfile` exit 0): `apps/web` 113 files / 1287 tests passed (47.19s); `packages/shared` 20 files / 280 tests passed; `apps/desktop` 6 files (1 skipped) / 69 passed | 4 skipped (73); `apps/mobile` 16 files / 129 passed | 1 skipped (130). The prior Windows blocker (shared `unused-exports-guard.test.ts` shelling out to `grep`, recorded in Evidence below) was eliminated by T-012 (PR #353 `ace93b9`), which rewrote that guard in pure Node — the full-suite acceptance had been waiting on that fix.
+- [x] CI `test` job on the PR reports `success` on GitHub Actions.
+  evidence: run `46063159922` on PR #366 (the `footer.spec.ts` repair for the stale-base break that landed on main `49fba48`; this card's full-suite evidence ran on the same content): run conclusion `success`, `test` job `success` — https://github.com/Masar-X/Masar-x/actions/runs/46063159922/job/140722038968 (job includes `pnpm --filter desktop test:coverage` per `.github/workflows/ci.yml:344-368`).
 
 ## Evidence
 
