@@ -26,6 +26,8 @@ const SPECS_DIR = path.join(repoRoot, "specs");
 
 const FROZEN_DUPLICATES = new Set(["015", "023", "033", "034", "040"]);
 
+const FROZEN_DUPLICATE_LIMIT = 2; // a frozen number keeps its historical pair, never a third
+
 export function findDuplicateSpecPrefixes(dir = SPECS_DIR) {
   const counts = new Map();
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -35,7 +37,9 @@ export function findDuplicateSpecPrefixes(dir = SPECS_DIR) {
     counts.set(match[1], (counts.get(match[1]) ?? 0) + 1);
   }
   return [...counts.entries()]
-    .filter(([prefix, count]) => count > 1 && !FROZEN_DUPLICATES.has(prefix))
+    .filter(([prefix, count]) =>
+      FROZEN_DUPLICATES.has(prefix) ? count > FROZEN_DUPLICATE_LIMIT : count > 1,
+    )
     .map(([prefix]) => prefix)
     .sort();
 }
