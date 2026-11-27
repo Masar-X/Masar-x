@@ -222,6 +222,10 @@ vizvibe.mmd
 !.github/scripts/**
 # Document the active branch protection Ruleset alongside this file.
 !.github/RULESET.md
+# Track community issue templates and the PR template (.github/* ignore would otherwise drop new ones).
+!.github/ISSUE_TEMPLATE/
+!.github/ISSUE_TEMPLATE/**
+!.github/PULL_REQUEST_TEMPLATE.md
 .specify
 .windsurf
 backup
