@@ -228,10 +228,24 @@ async function send(url, init, proxy) {
     try {
       return await fetch(url, init);
     } catch (error) {
-      const text = String(error?.cause?.message ?? error?.message ?? error);
-      if (/ETIMEDOUT|ECONNREFUSED|ENETUNREACH|ECONNRESET|EAI_AGAIN|certificate/i.test(text)) {
+      // Undici wraps the real cause: name = ConnectTimeoutError, code =
+      // UND_ERR_CONNECT_TIMEOUT, message = "Connect Timeout Error …" (all
+      // observed live against an ISP-blocked workers.dev host, 2026-11-28).
+      const causes = [
+        error?.message,
+        error?.cause?.name,
+        error?.cause?.code,
+        error?.cause?.message,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      if (
+        /ETIMEDOUT|ECONNREFUSED|ENETUNREACH|ECONNRESET|EAI_AGAIN|connect timeout|UND_ERR_CONNECT_TIMEOUT|certificate/i.test(
+          causes,
+        )
+      ) {
         fail(
-          `${text} — if your network blocks the target host (some ISPs block *.workers.dev), ` +
+          `${causes.slice(0, 300)} — if your network blocks the target host (some ISPs block *.workers.dev), ` +
             "set HTTPS_PROXY=socks5h://127.0.0.1:9150 (Tor Browser) and retry",
         );
       }
