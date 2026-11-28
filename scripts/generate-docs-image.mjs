@@ -2,22 +2,29 @@
 /**
  * generate-docs-image.mjs — AI image generation for repo documentation.
  *
- * Generates an image with the Gemini image model and writes it to disk, so
- * agent sessions can produce docs/media figures (guides, before/after pairs,
- * illustrations) without a committed screenshot. See docs/media/README.md
- * for the convention and docs/agents/references/14-docs-media.md for the
- * agent-facing guide.
+ * Generates an image and writes it to disk, so agent sessions can produce
+ * docs/media figures (guides, before/after pairs, illustrations) without a
+ * committed screenshot. See docs/media/README.md for the convention and
+ * docs/agents/references/14-docs-media.md for the agent-facing guide.
+ *
+ * Two providers:
+ *   - cloudflare (default): a Workers AI image worker (free-tier neurons).
+ *     Needs CF_IMAGE_GEN_URL (the worker URL) + CF_IMAGE_GEN_API_KEY in the
+ *     environment chain. Text-to-image only.
+ *   - gemini: Google's image model. Needs GEMINI_IMAGE_GEN_API_KEY and a
+ *     billed project (free tier returns 429 "limit: 0"). Required for
+ *     image-to-image edits (--ref), which the worker does not support.
  *
  * Usage:
  *   node scripts/generate-docs-image.mjs --prompt "…text…" \
- *        --out docs/media/<slug>-illustration.png [--ref path/to/image.png] \
- *        [--model gemini-2.5-flash-image]
+ *        --out docs/media/<slug>-illustration.png \
+ *        [--provider cloudflare|gemini] [--ref path/to/image.png] \
+ *        [--model <id>]
  *
- * The API key is read from the environment chain (process.env → repo-root
- * .env/.env.local → apps/web/.env.local) as GEMINI_IMAGE_GEN_API_KEY and is
- * never printed. The model comes from GEMINI_IMAGE_GEN_MODEL or --model
- * (default gemini-2.5-flash-image) — image models deprecate (see the
- * reference doc), so a swap is an env/flag change, not a code change.
+ * Keys are read from the environment chain (process.env → repo-root
+ * .env/.env.local → apps/web/.env.local) and are never printed. Models come
+ * from flags or env vars (CF_IMAGE_GEN_MODEL / GEMINI_IMAGE_GEN_MODEL) —
+ * image models deprecate, so a swap is an env change, not a code change.
  *
  * Zero dependencies (Node 20+ global fetch); not covered by CI gates —
  * verify locally with `node --check` before committing changes.
@@ -28,8 +35,18 @@ import { dirname, resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_MODEL = "gemini-2.5-flash-image";
-const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+
+const PROVIDERS = {
+  cloudflare: {
+    defaultModel: "@cf/black-forest-labs/flux-1-schnell",
+    modelEnv: "CF_IMAGE_GEN_MODEL",
+  },
+  gemini: {
+    defaultModel: "gemini-2.5-flash-image",
+    modelEnv: "GEMINI_IMAGE_GEN_MODEL",
+    apiBase: "https://generativelanguage.googleapis.com/v1beta/models",
+  },
+};
 
 /** audit-rls.mjs loadEnv pattern, extended with apps/web/.env.local. */
 function loadEnv() {
@@ -57,7 +74,10 @@ function parseArgs(argv) {
     i++;
   }
   if (!args.prompt || !args.out) {
-    fail("Usage: node scripts/generate-docs-image.mjs --prompt \"…\" --out docs/media/<slug>.png [--ref <image>] [--model <id>]");
+    fail(
+      "Usage: node scripts/generate-docs-image.mjs --prompt \"…\" --out docs/media/<slug>.png " +
+        "[--provider cloudflare|gemini] [--ref <image>] [--model <id>]",
+    );
   }
   return args;
 }
@@ -75,79 +95,120 @@ const MIME_BY_EXT = {
   ".gif": "image/gif",
 };
 
-async function main() {
-  const args = parseArgs(process.argv);
-  const env = loadEnv();
-  const apiKey = env.GEMINI_IMAGE_GEN_API_KEY;
-  const model = args.model ?? env.GEMINI_IMAGE_GEN_MODEL ?? DEFAULT_MODEL;
-  if (!apiKey) {
-    fail("GEMINI_IMAGE_GEN_API_KEY is not set — add it to apps/web/.env.local (git-ignored; see docs/agents/references/14-docs-media.md)");
-  }
+function extForMime(mime) {
+  return mime.includes("jpeg") ? ".jpg" : mime.includes("webp") ? ".webp" : ".png";
+}
 
-  const outPath = resolve(ROOT, args.out);
-  if (!outPath.startsWith(resolve(ROOT, "docs") + sep)) {
-    console.warn(`warn: --out is outside docs/ — docs/media/ is the convention home (see docs/media/README.md)`);
+/** POST the worker; returns { bytes, mime }. The worker answers binary image data. */
+async function generateCloudflare({ prompt, model, url, apiKey }) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ prompt, model }),
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok) {
+    const text = await response.text();
+    // A 401 from the worker means the API key is wrong; from Cloudflare's edge
+    // (html) it usually means the worker URL/subdomain is not live yet.
+    const hint = response.status === 401 && !contentType.includes("json")
+      ? " — the worker URL may not be live yet (workers.dev subdomain must exist)"
+      : "";
+    fail(`cloudflare API ${response.status}: ${text.slice(0, 600)}${hint}`);
   }
+  if (!contentType.startsWith("image/")) {
+    const text = await response.text();
+    fail(`cloudflare: expected image data, got ${contentType || "unknown"}: ${text.slice(0, 400)}`);
+  }
+  return { bytes: Buffer.from(await response.arrayBuffer()), mime: contentType };
+}
 
-  const parts = [{ text: args.prompt }];
-  if (args.ref) {
-    const refPath = resolve(ROOT, args.ref);
-    if (!existsSync(refPath)) fail(`--ref not found: ${refPath}`);
+/** POST generateContent; returns { bytes, mime, note }. */
+async function generateGemini({ prompt, model, apiKey, refPath }) {
+  const parts = [{ text: prompt }];
+  if (refPath) {
     const mime = MIME_BY_EXT[extname(refPath).toLowerCase()];
     if (!mime) fail(`--ref must be png/jpg/jpeg/webp/gif: ${refPath}`);
-    parts.push({
-      inlineData: {
-        mimeType: mime,
-        data: readFileSync(refPath).toString("base64"),
-      },
-    });
+    parts.push({ inlineData: { mimeType: mime, data: readFileSync(refPath).toString("base64") } });
   }
-
-  const response = await fetch(`${API_BASE}/${model}:generateContent`, {
+  const response = await fetch(`${PROVIDERS.gemini.apiBase}/${model}:generateContent`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       contents: [{ role: "user", parts }],
       generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
     }),
   });
-
   if (!response.ok) {
     const text = await response.text();
-    fail(`API ${response.status}: ${text.slice(0, 600)}`);
+    fail(`gemini API ${response.status}: ${text.slice(0, 600)}`);
   }
-
   const payload = await response.json();
   const candidate = payload.candidates?.[0];
-  if (!candidate) fail(`No candidate in the response: ${JSON.stringify(payload).slice(0, 400)}`);
-
+  if (!candidate) fail(`gemini: no candidate in the response: ${JSON.stringify(payload).slice(0, 400)}`);
   const imagePart = candidate.content?.parts?.find((p) => p.inlineData);
   if (!imagePart) {
     const textPart = candidate.content?.parts?.find((p) => p.text)?.text;
     fail(
-      `The model returned no image${textPart ? ` — its text reply: ${textPart.slice(0, 300)}` : ""}. ` +
-      `Refine the prompt (image models refuse some requests) or try a different model.`,
+      `gemini: the model returned no image${textPart ? ` — its text reply: ${textPart.slice(0, 300)}` : ""}. ` +
+        `Refine the prompt (image models refuse some requests) or try a different model.`,
     );
   }
+  const note = candidate.content?.parts?.find((p) => p.text)?.text?.trim();
+  return {
+    bytes: Buffer.from(imagePart.inlineData.data, "base64"),
+    mime: imagePart.inlineData.mimeType ?? "image/png",
+    note,
+  };
+}
 
-  const mime = imagePart.inlineData.mimeType ?? "image/png";
-  const ext = mime.includes("jpeg") ? ".jpg" : mime.includes("webp") ? ".webp" : ".png";
-  const finalPath = /\.(png|jpg|jpeg|webp)$/i.test(outPath)
-    ? outPath
-    : outPath + ext;
+async function main() {
+  const args = parseArgs(process.argv);
+  const env = loadEnv();
+
+  // --ref needs an image-to-image model → gemini is the only provider for it.
+  const providerName = args.provider ?? (args.ref ? "gemini" : "cloudflare");
+  const provider = PROVIDERS[providerName];
+  if (!provider) fail(`Unknown provider "${providerName}" — use cloudflare or gemini.`);
+  if (providerName === "cloudflare" && args.ref) {
+    fail("--ref (image-to-image) is gemini-only — pass --provider gemini or drop --ref.");
+  }
+
+  const model = args.model ?? env[provider.modelEnv] ?? provider.defaultModel;
+  const outPath = resolve(ROOT, args.out);
+  if (!outPath.startsWith(resolve(ROOT, "docs") + sep)) {
+    console.warn("warn: --out is outside docs/ — docs/media/ is the convention home (see docs/media/README.md)");
+  }
+
+  let result;
+  if (providerName === "cloudflare") {
+    const url = env.CF_IMAGE_GEN_URL;
+    const apiKey = env.CF_IMAGE_GEN_API_KEY;
+    if (!url || !apiKey) {
+      fail("CF_IMAGE_GEN_URL / CF_IMAGE_GEN_API_KEY are not set — add them to apps/web/.env.local (git-ignored; see docs/agents/references/14-docs-media.md)");
+    }
+    result = await generateCloudflare({ prompt: args.prompt, model, url, apiKey });
+  } else {
+    const apiKey = env.GEMINI_IMAGE_GEN_API_KEY;
+    if (!apiKey) {
+      fail("GEMINI_IMAGE_GEN_API_KEY is not set — add it to apps/web/.env.local (git-ignored; see docs/agents/references/14-docs-media.md)");
+    }
+    const refPath = args.ref ? resolve(ROOT, args.ref) : null;
+    if (refPath && !existsSync(refPath)) fail(`--ref not found: ${refPath}`);
+    result = await generateGemini({ prompt: args.prompt, model, apiKey, refPath });
+  }
+
+  const finalPath = /\.(png|jpg|jpeg|webp)$/i.test(outPath) ? outPath : outPath + extForMime(result.mime);
   mkdirSync(dirname(finalPath), { recursive: true });
-  const bytes = Buffer.from(imagePart.inlineData.data, "base64");
-  writeFileSync(finalPath, bytes);
+  writeFileSync(finalPath, result.bytes);
 
-  const textPart = candidate.content?.parts?.find((p) => p.text)?.text;
-  console.log(`model:  ${model}`);
-  console.log(`wrote:  ${finalPath}`);
-  console.log(`size:   ${statSync(finalPath).size} bytes (${mime})`);
-  if (textPart?.trim()) console.log(`note:   ${textPart.trim().slice(0, 300)}`);
-  if (statSync(finalPath).size > 500 * 1024) {
+  const size = statSync(finalPath).size;
+  console.log(`provider: ${providerName}`);
+  console.log(`model:    ${model}`);
+  console.log(`wrote:    ${finalPath}`);
+  console.log(`size:     ${size} bytes (${result.mime})`);
+  if (result.note) console.log(`note:     ${result.note.slice(0, 300)}`);
+  if (size > 500 * 1024) {
     console.warn("warn: image is over the 500 KB budget — consider regenerating smaller or compressing (docs/media/README.md)");
   }
 }
