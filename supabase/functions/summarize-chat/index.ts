@@ -106,7 +106,8 @@ serve(async (req) => {
     // data rule rides on systemInstruction so message content cannot
     // overwrite the summarization task or the JSON contract.
     const model = genAI.getGenerativeModel({
-      model: 'gemini-pro',
+      // gemini-pro is retired from the API (404 on v1beta) — issue #380.
+      model: 'gemini-2.5-flash',
       systemInstruction: SUMMARIZE_DATA_RULE,
     })
 

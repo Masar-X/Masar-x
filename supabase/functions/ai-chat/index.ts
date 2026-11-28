@@ -73,7 +73,10 @@ import { checkRateLimit } from '../_shared/net.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
-const AI_MODEL = Deno.env.get('AI_MODEL') ?? 'gemini-pro';
+// gemini-pro was retired from the Gemini API (404 on v1beta generateContent,
+// issue #380) — pin a current stable name; the AI_MODEL secret overrides
+// this without a redeploy.
+const AI_MODEL = Deno.env.get('AI_MODEL') ?? 'gemini-2.5-flash';
 
 interface AiRequest {
   conversationId: string;
