@@ -54,9 +54,19 @@ beforeAll(async () => {
   route = await import('../route');
 });
 
-const authOk = () => {
+// authOk stubs the verified-user client. `sessionToken` feeds getSession —
+// the route resolves it server-side to forward the caller's identity to the
+// edge function (#374); null simulates a sessionless caller (falls back to
+// the request's Authorization header, i.e. desktop/mobile bearer clients).
+const authOk = (sessionToken: string | null = 'sess-tok-1') => {
   createClientMock.mockResolvedValue({
-    auth: { getUser: async () => ({ data: { user: makeUser() }, error: null }) },
+    auth: {
+      getUser: async () => ({ data: { user: makeUser() }, error: null }),
+      getSession: async () => ({
+        data: { session: sessionToken ? { access_token: sessionToken } : null },
+        error: null,
+      }),
+    },
   } as never);
 };
 
@@ -185,7 +195,7 @@ describe('forwarding to the Edge Function', () => {
     fetchMock.mockResolvedValue(jsonResponse({ reply: 'pong' }));
   });
 
-  it('posts the parsed body to ${SUPABASE_URL}/functions/v1/ai-chat with apikey + anon bearer', async () => {
+  it('posts the parsed body to ${SUPABASE_URL}/functions/v1/ai-chat with apikey + the server-resolved session bearer (#374)', async () => {
     await route.POST(post({ messages: [{ role: 'user', content: 'hi' }] }));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -195,17 +205,28 @@ describe('forwarding to the Edge Function', () => {
     const headers = init.headers as Record<string, string>;
     expect(headers['Content-Type']).toBe('application/json');
     expect(headers['apikey']).toBe('anon-key-123');
-    expect(headers['Authorization']).toBe('Bearer anon-key-123');
+    // #374: cookie-authenticated web callers send no Bearer — the route must
+    // forward the SESSION token so the edge's auth.getUser() sees the user
+    // (the old anon-key fallback was rejected with 401 Unauthorized there).
+    expect(headers['Authorization']).toBe('Bearer sess-tok-1');
     expect(JSON.parse(init.body as string)).toEqual({
       messages: [{ role: 'user', content: 'hi' }],
     });
   });
 
-  it('forwards the caller bearer token verbatim when present', async () => {
+  it('falls back to the caller bearer token verbatim when no server session exists', async () => {
+    authOk(null);
     await route.POST(post({ prompt: 'hi' }, { Authorization: 'Bearer user-jwt-token' }));
 
     const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer user-jwt-token');
+  });
+
+  it('the server-resolved session token wins over a client-supplied Authorization header', async () => {
+    await route.POST(post({ prompt: 'hi' }, { Authorization: 'Bearer spoofed-or-stale-token' }));
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers['Authorization']).toBe('Bearer sess-tok-1');
   });
 
   it('forwards the Accept header so SSE requests reach the function', async () => {

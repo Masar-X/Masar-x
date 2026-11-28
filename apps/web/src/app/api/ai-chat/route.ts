@@ -6,6 +6,7 @@ import {
   requireAuthenticatedUser,
   tooManyRequestsResponse,
 } from '@/lib/api-auth';
+import { createClient } from '@/lib/supabase/server';
 import { checkAIChatRateLimit, recordAIChatRequest } from '@/lib/rate-limit';
 import { recordAiQuestion } from '@/lib/metrics';
 import { logger } from '@/lib/logger';
@@ -111,10 +112,20 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Forward to the Supabase Edge Function
-    //    The user's bearer token is passed through so the function
-    //    can call supabase.auth.getUser() with the user's identity
-    //    (matching the same pattern as the existing summarize-chat
-    //    function, see supabase/functions/summarize-chat/index.ts).
+    //    The edge function resolves the caller's identity from the
+    //    Authorization bearer (auth.getUser, supabase/functions/ai-chat/
+    //    index.ts) — matching the same pattern as the existing
+    //    summarize-chat function. Web callers authenticate by cookie and
+    //    send no Bearer, so the session token is resolved server-side and
+    //    forwarded (#374 — the old anon-key fallback made the edge's
+    //    auth.getUser() reject every cookie-authenticated caller with
+    //    401 Unauthorized). Desktop/mobile clients send their own bearer
+    //    and no web cookies, so the client header remains the fallback.
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const authorization = session?.access_token
+      ? `Bearer ${session.access_token}`
+      : (req.headers.get('Authorization') ?? `Bearer ${SUPABASE_ANON_KEY}`);
     // Forward the client's Accept header so SSE mode (Accept: text/event-stream)
     // reaches the Edge Function (spec 004 T054a end-to-end streaming).
     const acceptHeader = req.headers.get('Accept') ?? '';
@@ -123,7 +134,7 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'Accept': acceptHeader,
-        'Authorization': req.headers.get('Authorization') ?? `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': authorization,
         'apikey': SUPABASE_ANON_KEY,
       },
       body: JSON.stringify(parsed.data),
