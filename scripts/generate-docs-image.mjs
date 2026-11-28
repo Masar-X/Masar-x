@@ -15,6 +15,15 @@
  *     billed project (free tier returns 429 "limit: 0"). Required for
  *     image-to-image edits (--ref), which the worker does not support.
  *
+ * Optional proxy: some ISPs block *.workers.dev outright (observed 2026-11-28
+ * in Egypt — every TCP connect to the subdomain times out while the worker
+ * itself is healthy). Node's fetch ignores HTTPS_PROXY, so when the variable
+ * is set to a SOCKS5 proxy the script tunnels the request itself:
+ *   HTTPS_PROXY=socks5h://127.0.0.1:9150 node scripts/generate-docs-image.mjs …
+ * (socks5h = the hostname is resolved at the proxy, which also defeats DNS
+ * poisoning; Tor Browser exposes 127.0.0.1:9150 when running.) Plain http://
+ * proxies are not supported.
+ *
  * Usage:
  *   node scripts/generate-docs-image.mjs --prompt "…text…" \
  *        --out docs/media/<slug>-illustration.png \
@@ -33,6 +42,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { dirname, resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import net from "node:net";
+import tls from "node:tls";
+import http from "node:http";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -96,16 +108,158 @@ const MIME_BY_EXT = {
 };
 
 function extForMime(mime) {
-  return mime.includes("jpeg") ? ".jpg" : mime.includes("webp") ? ".webp" : ".png";
+  if (mime.includes("jpeg")) return ".jpg";
+  if (mime.includes("webp")) return ".webp";
+  if (mime.includes("gif")) return ".gif";
+  return ".png";
+}
+
+/** Magic-byte sniff — the worker labels flux output image/png even when it is JPEG. */
+function sniffMime(bytes) {
+  if (bytes.length > 8 && bytes[0] === 0x89 && bytes.subarray(1, 4).toString("latin1") === "PNG") return "image/png";
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length > 12 && bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP") return "image/webp";
+  if (bytes.length > 6 && bytes.subarray(0, 3).toString("latin1") === "GIF") return "image/gif";
+  return null;
+}
+
+/** HTTPS_PROXY / ALL_PROXY → { host, port } for socks5:// or socks5h:// only. */
+function proxyFromEnv(env) {
+  const raw = env.HTTPS_PROXY ?? env.https_proxy ?? env.ALL_PROXY ?? env.all_proxy;
+  if (!raw) return null;
+  const m = raw.match(/^socks5h?:\/\/([^/:@]+):(\d+)\/?$/);
+  if (!m) {
+    fail(
+      `HTTPS_PROXY "${raw.slice(0, 80)}" is not supported — use socks5://host:port or socks5h://host:port ` +
+        "(plain http:// proxies are not supported; Tor Browser exposes socks5h://127.0.0.1:9150 while running)",
+    );
+  }
+  return { host: m[1], port: Number(m[2]) };
+}
+
+/**
+ * SOCKS5 CONNECT tunnel to host:port through the proxy (socks5h semantics —
+ * the hostname is resolved at the proxy). Resolves with a TLS socket once the
+ * handshake succeeds.
+ */
+function socks5Tunnel(proxy, targetHost, targetPort, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(proxy.port, proxy.host);
+    socket.setTimeout(timeoutMs);
+    let stage = "greeting";
+    socket.on("connect", () => socket.write(Buffer.from([0x05, 0x01, 0x00])));
+    socket.on("data", function onData(chunk) {
+      if (stage === "greeting") {
+        if (chunk.length < 2 || chunk[0] !== 0x05 || chunk[1] !== 0x00) {
+          socket.destroy();
+          return reject(new Error(`socks5 proxy rejected the greeting (${proxy.host}:${proxy.port})`));
+        }
+        stage = "connect";
+        const hostBuf = Buffer.from(targetHost, "latin1");
+        const portBuf = Buffer.alloc(2);
+        portBuf.writeUInt16BE(targetPort);
+        socket.write(
+          Buffer.concat([Buffer.from([0x05, 0x01, 0x00, 0x03, hostBuf.length]), hostBuf, portBuf]),
+        );
+        return;
+      }
+      if (chunk.length < 2 || chunk[1] !== 0x00) {
+        socket.destroy();
+        return reject(new Error(`socks5 CONNECT failed (reply code ${chunk[1] ?? "?"})`));
+      }
+      socket.removeListener("data", onData);
+      socket.setTimeout(0);
+      const tlsSocket = tls.connect({ socket, servername: targetHost });
+      tlsSocket.once("secureConnect", () => resolve(tlsSocket));
+      tlsSocket.once("error", (error) => {
+        socket.destroy();
+        reject(error);
+      });
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      reject(new Error(`socks5 proxy timeout (${proxy.host}:${proxy.port})`));
+    });
+    socket.on("error", (error) => reject(error));
+  });
+}
+
+/**
+ * HTTPS POST over the tunnel — plain HTTP on an already-TLS socket, so node's
+ * http client handles status/headers/chunked bodies for us. No Accept-Encoding
+ * is sent, so the answer arrives uncompressed.
+ */
+function proxiedPost({ proxy, url, headers, body }) {
+  const target = new URL(url);
+  if (target.protocol !== "https:") fail("HTTPS_PROXY support covers https:// URLs only");
+  const port = Number(target.port) || 443;
+  return socks5Tunnel(proxy, target.hostname, port).then(
+    (tlsSocket) =>
+      new Promise((resolve, reject) => {
+        const req = http.request(
+          {
+            createConnection: () => tlsSocket,
+            host: target.hostname,
+            path: target.pathname + target.search,
+            method: "POST",
+            headers,
+          },
+          (res) => {
+            const chunks = [];
+            res.on("data", (c) => chunks.push(c));
+            res.on("end", () =>
+              resolve({
+                status: res.statusCode ?? 0,
+                contentType: res.headers["content-type"] ?? "",
+                body: Buffer.concat(chunks),
+              }),
+            );
+          },
+        );
+        req.on("error", reject);
+        req.end(body);
+      }),
+  );
+}
+
+/** fetch when no proxy is configured; a fetch-like shim over the tunnel when one is. */
+async function send(url, init, proxy) {
+  if (!proxy) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      const text = String(error?.cause?.message ?? error?.message ?? error);
+      if (/ETIMEDOUT|ECONNREFUSED|ENETUNREACH|ECONNRESET|EAI_AGAIN|certificate/i.test(text)) {
+        fail(
+          `${text} — if your network blocks the target host (some ISPs block *.workers.dev), ` +
+            "set HTTPS_PROXY=socks5h://127.0.0.1:9150 (Tor Browser) and retry",
+        );
+      }
+      throw error;
+    }
+  }
+  const res = await proxiedPost({ proxy, url, headers: init.headers, body: init.body });
+  return {
+    ok: res.status >= 200 && res.status < 300,
+    status: res.status,
+    headers: { get: (k) => (String(k).toLowerCase() === "content-type" ? res.contentType : null) },
+    text: async () => res.body.toString("utf8"),
+    json: async () => JSON.parse(res.body.toString("utf8")),
+    arrayBuffer: async () => res.body.buffer.slice(res.body.byteOffset, res.body.byteOffset + res.body.byteLength),
+  };
 }
 
 /** POST the worker; returns { bytes, mime }. The worker answers binary image data. */
-async function generateCloudflare({ prompt, model, url, apiKey }) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ prompt, model }),
-  });
+async function generateCloudflare({ prompt, model, url, apiKey, proxy }) {
+  const response = await send(
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ prompt, model }),
+    },
+    proxy,
+  );
   const contentType = response.headers.get("content-type") ?? "";
   if (!response.ok) {
     const text = await response.text();
@@ -124,21 +278,25 @@ async function generateCloudflare({ prompt, model, url, apiKey }) {
 }
 
 /** POST generateContent; returns { bytes, mime, note }. */
-async function generateGemini({ prompt, model, apiKey, refPath }) {
+async function generateGemini({ prompt, model, apiKey, refPath, proxy }) {
   const parts = [{ text: prompt }];
   if (refPath) {
     const mime = MIME_BY_EXT[extname(refPath).toLowerCase()];
     if (!mime) fail(`--ref must be png/jpg/jpeg/webp/gif: ${refPath}`);
     parts.push({ inlineData: { mimeType: mime, data: readFileSync(refPath).toString("base64") } });
   }
-  const response = await fetch(`${PROVIDERS.gemini.apiBase}/${model}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts }],
-      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-    }),
-  });
+  const response = await send(
+    `${PROVIDERS.gemini.apiBase}/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+      }),
+    },
+    proxy,
+  );
   if (!response.ok) {
     const text = await response.text();
     fail(`gemini API ${response.status}: ${text.slice(0, 600)}`);
@@ -165,6 +323,8 @@ async function generateGemini({ prompt, model, apiKey, refPath }) {
 async function main() {
   const args = parseArgs(process.argv);
   const env = loadEnv();
+  const proxy = proxyFromEnv(env);
+  if (proxy) console.log(`proxy:    socks5 via ${proxy.host}:${proxy.port} (HTTPS_PROXY)`);
 
   // --ref needs an image-to-image model → gemini is the only provider for it.
   const providerName = args.provider ?? (args.ref ? "gemini" : "cloudflare");
@@ -187,7 +347,7 @@ async function main() {
     if (!url || !apiKey) {
       fail("CF_IMAGE_GEN_URL / CF_IMAGE_GEN_API_KEY are not set — add them to apps/web/.env.local (git-ignored; see docs/agents/references/14-docs-media.md)");
     }
-    result = await generateCloudflare({ prompt: args.prompt, model, url, apiKey });
+    result = await generateCloudflare({ prompt: args.prompt, model, url, apiKey, proxy });
   } else {
     const apiKey = env.GEMINI_IMAGE_GEN_API_KEY;
     if (!apiKey) {
@@ -195,10 +355,24 @@ async function main() {
     }
     const refPath = args.ref ? resolve(ROOT, args.ref) : null;
     if (refPath && !existsSync(refPath)) fail(`--ref not found: ${refPath}`);
-    result = await generateGemini({ prompt: args.prompt, model, apiKey, refPath });
+    result = await generateGemini({ prompt: args.prompt, model, apiKey, refPath, proxy });
   }
 
-  const finalPath = /\.(png|jpg|jpeg|webp)$/i.test(outPath) ? outPath : outPath + extForMime(result.mime);
+  const sniffed = sniffMime(result.bytes);
+  if (sniffed && sniffed !== result.mime) {
+    console.warn(`warn: the response said ${result.mime} but the bytes are ${sniffed} — trusting the bytes`);
+    result = { ...result, mime: sniffed };
+  }
+
+  const providedExt = extname(outPath).toLowerCase();
+  const knownExt = MIME_BY_EXT[providedExt] ? providedExt : null;
+  // Prefer the requested extension when it matches the real bytes; otherwise
+  // name the file by what it actually is (a .png name over JPEG bytes breaks
+  // tooling that sniffs magic bytes).
+  const finalPath =
+    !knownExt || MIME_BY_EXT[knownExt] !== result.mime
+      ? outPath.replace(/\.(png|jpg|jpeg|webp|gif)$/i, "") + extForMime(result.mime)
+      : outPath;
   mkdirSync(dirname(finalPath), { recursive: true });
   writeFileSync(finalPath, result.bytes);
 
