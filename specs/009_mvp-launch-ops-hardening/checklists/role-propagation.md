@@ -24,3 +24,19 @@
 > On FAIL: escalate to owner — a revocation gap is a security finding, not a UX note.
 
 **Execution note (2026-09-20):** the first automated run scored 9/10 — the `grant+claim-sync` check FAILED because the 008 trigger set this design depends on had **never been deployed to prod** (G3.9 drift: grants produced no claim, revocations stripped nothing; one live `student_admin` had no claim and a dead admin UI). Fixed in-flight by applying migration **`012_jwt_role_sync`** (both triggers + one-time backfill aligning every admin's claim with the `admins` table) and re-running to ALL PASS. Evidence archived in `docs/LAUNCH_SIGNOFF.md` §3.
+
+
+## Re-verification 2026-11-28 (agent-run, disposable prod test user — #351)
+
+| Check | Result |
+| --- | --- |
+| Test account | Disposable Supabase user (`+masarxtest` Gmail alias), confirmed email, deleted after the run (0 rows remaining across auth.users / profiles / admins / conversations) |
+| Promote → claim sync | PASS — `admins` insert fired `sync_user_role_to_metadata()`; `raw_app_meta_data.role='admin'` DB-verified; fresh password grant carries the claim |
+| Admin UI grants access | PASS — `/en/admin-dashboard` renders the admin shell (`System Admin`, test-user email in the sidebar) on a fresh post-promotion session |
+| Demote → claim strip | PASS — `admins` delete fired `remove_user_role_from_metadata()`; `raw_app_meta_data.role` null DB-verified within the same second |
+| Immediate UI block | PASS — `/en/admin-dashboard` attempt right after demotion bounces to `/en` (live server data; the stale browser JWT's old claim is irrelevant to the gates) |
+| Claim drop on refresh | PASS — `grant_type=refresh_token` post-demotion returns a token with **no role claim** |
+| RLS enforcement | unchanged — 2026-09-20 verification stands (same trigger/claim design; claim stripped → admin-gated writes fail as before) |
+| Verdict | **PASS** — propagation immediate (<1s), no stale-claim window beyond the old JWT lifetime |
+
+Execution note (2026-11-28): run performed by the agent per owner direction (#351); prod mutations limited to the disposable user's rows. The promote path exercised the same `012_jwt_role_sync` trigger design verified 2026-09-20.
