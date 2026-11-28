@@ -28,18 +28,19 @@ function ResetPasswordContent() {
     [router, locale],
   );
 
-  // Check for valid reset token/code from URL parameters
+  // Check for the PKCE code from the URL parameters. GoTrue's verify
+  // redirect appends only `?code=` — there is no type param to check for
+  // (#376); the submit-time exchange itself validates the grant.
   useEffect(() => {
     const code = searchParams?.get("code");
-    const type = searchParams?.get("type");
 
-    if (!code || type !== "recovery") {
+    if (!code) {
       setError(t("resetPassword.invalidLinkError"));
       setTimeout(() => onNavigate("login"), 3000);
       return;
     }
 
-    // Code exists and type is recovery, assume valid for now (will be validated on submit)
+    // Code exists — assume valid for now (validated on submit)
     setIsValidSession(true);
   }, [searchParams, onNavigate, t]);
 

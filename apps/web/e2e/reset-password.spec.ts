@@ -6,8 +6,9 @@ import { buildSeededSession } from "./helpers/auth";
  * Reset-password flow — spec 056, exchange-race fix (2026-11-23).
  *
  * Page contract (reset-password/page.tsx, no data-testids — id/text
- * selectors): `?code&type=recovery` gates the form; a visit WITHOUT them
- * shows resetPassword.invalidLinkError and auto-pushes to /{locale}/login
+ * selectors): `?code` gates the form — GoTrue's verify redirect appends
+ * only `?code=` (no type param, #376); a visit WITHOUT it shows
+ * resetPassword.invalidLinkError and auto-pushes to /{locale}/login
  * after a 3s timer; the submit handler runs exchangeCodeForSession →
  * updateUser (PUT /auth/v1/user) → signOut → successMessage → login.
  *
@@ -101,7 +102,7 @@ async function recoverToSeedVerifier(page: import("@playwright/test").Page) {
 }
 
 test.describe("reset-password", () => {
-  test("a visit without ?code&type=recovery shows invalidLinkError and auto-pushes to login", async ({
+  test("a visit without ?code shows invalidLinkError and auto-pushes to login", async ({
     page,
   }) => {
     await page.route("**/rest/v1/**", (route) => route.fulfill({ json: [] }));
@@ -156,7 +157,8 @@ test.describe("reset-password", () => {
 
     const pkce = countPkceExchanges(page);
 
-    await page.goto("/ar/reset-password?code=e2e-code&type=recovery", {
+    // The real GoTrue redirect carries only ?code= (no type param, #376).
+    await page.goto("/ar/reset-password?code=e2e-code", {
       waitUntil: "domcontentloaded",
     });
     // No hydration gate here: platform_settings is localStorage-cached by
@@ -214,7 +216,8 @@ test.describe("reset-password", () => {
     // SUBMIT-time exchange fails locally and the page surfaces the same
     // expiredLinkError branch a real invalid grant takes.
     const pkce = countPkceExchanges(page);
-    await page.goto("/ar/reset-password?code=e2e-code&type=recovery", {
+    // The real GoTrue redirect carries only ?code= (no type param, #376).
+    await page.goto("/ar/reset-password?code=e2e-code", {
       waitUntil: "domcontentloaded",
     });
     await awaitHydration(page);
