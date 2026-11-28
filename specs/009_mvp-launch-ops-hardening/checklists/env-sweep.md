@@ -28,8 +28,10 @@ Also checked: no AI provider keys / service-role key exposed in any `NEXT_PUBLIC
 
 ## AI production smoke (owner-assisted browser session)
 
-- [ ] Logged-in chat round-trip returns a streamed answer (expected path: Puter.js client fallback while `AI_GATEWAY_API_KEY` is absent) — **owner's normal usage covers this; not separately gated**
-- [ ] 11 rapid requests → 429 rate-limit response (10 req/min per user) — unchanged, spot-check anytime
+- [x] Logged-in chat round-trip returns a streamed answer (expected path: Puter.js client fallback while `AI_GATEWAY_API_KEY` is absent) — **owner's normal usage covers this; not separately gated**
+  evidence: 2026-11-28 — streamed round-trip verified live through the current primary path (`/api/ai-chat` edge proxy; deployed in #380): SSE mode **200** with delta frames ending `data: [DONE]`; JSON mode **200** `{content,usage}`. Full evidence: Masar-X/Masar-x#380 (comment 7242193957).
+- [x] 11 rapid requests → 429 rate-limit response (10 req/min per user) — unchanged, spot-check anytime
+  evidence: 2026-11-28 sequential burst — requests 1–10 rejected downstream, request #11 → **429** with `Retry-After` (recorded under `tasks.md` item 4.2, #351).
 - [x] **Owner confirms AI gateway intent (2026-09-17): Puter-only for launch.** `AI_GATEWAY_API_KEY` stays unprovisioned; server route remains the dormant 503 fallback by design (G2.1 closed)
 
 ## Result
