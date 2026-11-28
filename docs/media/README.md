@@ -22,12 +22,14 @@ node scripts/generate-docs-image.mjs \
   --prompt "An isometric illustration of a study platform: lectures, quizzes, AI tutor" \
   --out docs/media/onboarding-illustration.png
 
-# image-to-image (edit an existing "before" into a mockup/illustration)
+# image-to-image (edit an existing "before" into a mockup) — gemini provider
 node scripts/generate-docs-image.mjs \
   --prompt "Apply the dark theme to this interface, keep the layout" \
   --ref docs/images/screenshot-web.png \
   --out docs/media/dark-theme-mockup.png
 ```
+
+Text-to-image defaults to a Cloudflare Workers AI worker (free tier); `--ref` edits use Gemini, which needs a billed project.
 
 The API key lives in `apps/web/.env.local` (`GEMINI_IMAGE_GEN_API_KEY` — git-ignored, never commit or echo it). The model comes from `GEMINI_IMAGE_GEN_MODEL` or `--model`; image models deprecate, so a swap is an env change (see [docs/agents/references/14-docs-media.md](../agents/references/14-docs-media.md)). Note: image generation requires a **billed** Gemini project — free-tier keys are quota-blocked (`429 … limit: 0`); see the reference doc's traps.
 

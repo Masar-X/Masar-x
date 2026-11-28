@@ -11,19 +11,29 @@ When a PR or spec benefits from visual material — perf-wave before/after pairs
 
 ## Generating
 
+Two providers; the script picks `cloudflare` unless `--ref` is given (then `gemini`). `--provider` overrides.
+
 ```bash
+# text-to-image — Cloudflare Workers AI worker (free tier), the default
 node scripts/generate-docs-image.mjs --prompt "…" --out docs/media/<slug>-illustration.png
-node scripts/generate-docs-image.mjs --prompt "…" --ref docs/images/screenshot-web.png --out docs/media/<slug>-after.png
+
+# image-to-image edit — gemini only (the worker has no edit support)
+node scripts/generate-docs-image.mjs --prompt "…" --ref docs/images/screenshot-web.png --out docs/media/<slug>-mockup.png
 ```
 
-- Key: `GEMINI_IMAGE_GEN_API_KEY` in `apps/web/.env.local` (git-ignored). If missing, tell the owner to add it — never ask them to paste it in chat, never commit or echo it.
-- Model: `GEMINI_IMAGE_GEN_MODEL` env or `--model` flag; default `gemini-2.5-flash-image`.
-- The script refuses nothing silently: API errors print and exit 1; refusals (safety/policy) come back as text — refine the prompt.
+| Provider | Env (in `apps/web/.env.local`, git-ignored) | Default model | Notes |
+|---|---|---|---|
+| `cloudflare` | `CF_IMAGE_GEN_URL` (worker URL) + `CF_IMAGE_GEN_API_KEY` | `@cf/black-forest-labs/flux-1-schnell` (`CF_IMAGE_GEN_MODEL` / `--model`) | Free Workers AI neurons; text-to-image only. Worker source lives outside this repo (a Workers AI binding + `API_KEY` secret). |
+| `gemini` | `GEMINI_IMAGE_GEN_API_KEY` | `gemini-2.5-flash-image` (`GEMINI_IMAGE_GEN_MODEL` / `--model`) | Needs a **billed** project; required for `--ref`. |
+
+Keys are never committed or echoed. If one is missing, tell the owner to add it to the file — never ask them to paste it in chat. The script refuses nothing silently: API errors print and exit 1; refusals (safety/policy) come back as text — refine the prompt.
 
 ## Traps
 
-- 🔴 **Image generation needs a billed Gemini project.** Free-tier keys return `429 … limit: 0, model: …` on every image model (verified 2026-11-28 against a fresh free-tier key), and older ids 404. The API call pipeline itself is model-independent — if the key reports limit 0, escalate to the owner: enable billing (pay-as-you-go) on the AI Studio project, or supply a key from a billed project.
-- 🔴 **Image models deprecate on Google's schedule** (`gemini-2.5-flash-image` retires 2027-03-15; a "Nano Banana Pro"/Gemini-3 successor exists). A 404 "model not found" on generate = swap the model via `GEMINI_IMAGE_GEN_MODEL` or `--model` — no code change; check [aistudio.google.com/docs/models](https://aistudio.google.com/docs/models) for current ids.
-- 🔴 `generationConfig.responseModalities` must include `"IMAGE"` — omitting it yields text-only replies (the script surfaces the model's text as the error note).
+- 🔴 **A Cloudflare HTML 401/404 from the worker URL means the URL is not live, not a bad key** — a `workers.dev` subdomain must exist on the account (created by opening the Workers & Pages dashboard once); API tokens cannot create it (`10405 Method not allowed for this authentication scheme`). The script appends that hint on a non-JSON 401.
+- 🔴 **Gemini image generation needs a billed project.** Free-tier keys return `429 … limit: 0, model: …` on every image model (verified 2026-11-28 against a fresh free-tier key), and older ids 404. Use the cloudflare provider for plain text-to-image, or escalate to the owner for billing.
+- 🔴 **Image models deprecate on the provider's schedule** (`gemini-2.5-flash-image` retires 2027-03-15). A 404 "model not found" on generate = swap the model via the `*_IMAGE_GEN_MODEL` env or `--model` — no code change.
+- 🔴 `--ref` with `--provider cloudflare` is rejected up front (the worker has no image input).
+- 🔴 Gemini `generationConfig.responseModalities` must include `"IMAGE"` — omitting it yields text-only replies (the script surfaces the model's text as the error note).
 - The honesty rule from `docs/media/README.md` is a hard rule: generated ≠ screenshot. Reviewers should be able to tell from the filename alone.
 - The script is deliberately outside CI gates (root `scripts/` is unlinted) — run `node --check scripts/generate-docs-image.mjs` after editing it.
