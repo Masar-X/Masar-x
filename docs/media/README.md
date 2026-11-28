@@ -31,6 +31,15 @@ node scripts/generate-docs-image.mjs \
 
 Text-to-image defaults to a Cloudflare Workers AI worker (free tier); `--ref` edits use Gemini, which needs a billed project.
 
+Some ISPs block `*.workers.dev` outright (observed 2026-11-28 in Egypt — every TCP connect to the subdomain times out while the worker itself is healthy). Route the request through a local SOCKS5 proxy instead; Tor Browser exposes one at `socks5h://127.0.0.1:9150` while running:
+
+```bash
+HTTPS_PROXY=socks5h://127.0.0.1:9150 node scripts/generate-docs-image.mjs \
+  --prompt "…" --out docs/media/<slug>-illustration.png
+```
+
+The worker labels its flux output `image/png` even when the bytes are JPEG — the script sniffs the magic bytes and names the file by what it actually is (`-illustration.jpg` when flux returns JPEG).
+
 The API key lives in `apps/web/.env.local` (`GEMINI_IMAGE_GEN_API_KEY` — git-ignored, never commit or echo it). The model comes from `GEMINI_IMAGE_GEN_MODEL` or `--model`; image models deprecate, so a swap is an env change (see [docs/agents/references/14-docs-media.md](../agents/references/14-docs-media.md)). Note: image generation requires a **billed** Gemini project — free-tier keys are quota-blocked (`429 … limit: 0`); see the reference doc's traps.
 
 ## Budget
